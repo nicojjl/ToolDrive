@@ -51,60 +51,23 @@ body.dark-theme {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(0, 0, 0, 0.22) transparent;
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
 }
 
-body.dark-theme * {
-  scrollbar-color: rgba(255, 255, 255, 0.28) transparent;
-}
-
-/* ==================== IPHONE / IOS STYLE FLOATING SCROLLBAR ==================== */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background-color: rgba(0, 0, 0, 0.22);
-  border-radius: 9999px;
-  border: 1px solid transparent;
-  background-clip: padding-box;
-  transition: background-color 0.25s ease;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(0, 0, 0, 0.45);
-}
-
-::-webkit-scrollbar-thumb:active {
-  background-color: rgba(0, 0, 0, 0.65);
-}
-
-::-webkit-scrollbar-button {
+/* Ocultar barra de desplazamiento por completo para una interfaz 100% limpia y sin líneas toscas */
+*::-webkit-scrollbar {
   display: none !important;
   width: 0 !important;
   height: 0 !important;
 }
 
-::-webkit-scrollbar-corner {
-  background: transparent;
+*::-webkit-scrollbar-track {
+  display: none !important;
 }
 
-body.dark-theme ::-webkit-scrollbar-thumb {
-  background-color: rgba(255, 255, 255, 0.26);
-}
-
-body.dark-theme ::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(255, 255, 255, 0.52);
-}
-
-body.dark-theme ::-webkit-scrollbar-thumb:active {
-  background-color: rgba(255, 255, 255, 0.75);
+*::-webkit-scrollbar-thumb {
+  display: none !important;
 }
 
 body {
@@ -1363,5 +1326,264 @@ body.dark-theme .filter-pill.active {
 
 body.dark-theme .icon-btn:hover {
   background-color: rgba(255, 255, 255, 0.08);
+}
+
+/* ==================== STATIC MODAL PULSE ANIMATION ==================== */
+@keyframes modalStaticPulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.02); }
+  100% { transform: scale(1); }
+}
+
+.tool-modal.static-pulse {
+  animation: modalStaticPulse 0.22s cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* ==================== CUSTOM FOLDERS SYSTEM ==================== */
+.nav-section-header-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px 6px 16px;
+}
+
+.nav-section-add-btn {
+  background: transparent;
+  border: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--md-sys-color-primary);
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.nav-section-add-btn:hover {
+  background-color: var(--md-sys-color-surface-hover);
+}
+
+.folder-card-add {
+  border: 1.5px dashed var(--md-sys-color-outline-variant);
+  background-color: transparent;
+}
+
+.folder-card-add:hover {
+  border-color: var(--md-sys-color-primary);
+  background-color: var(--md-sys-color-surface-hover);
+}
+
+/* Custom Folder Header Bar in Tools View */
+.custom-folder-header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  background-color: var(--md-sys-color-surface-variant);
+  border-radius: 16px;
+  margin-bottom: 20px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.custom-folder-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.custom-folder-icon-circle {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #ffffff;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+body.dark-theme .custom-folder-icon-circle {
+  background-color: #1e1f20;
+}
+
+.custom-folder-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--md-sys-color-on-surface);
+}
+
+.custom-folder-subtitle {
+  font-size: 12px;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.custom-folder-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.custom-folder-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  font-size: 13px;
+  border-radius: 18px;
+}
+
+.danger-btn {
+  color: #ea4335 !important;
+  border-color: #ea4335 !important;
+}
+
+.danger-btn:hover {
+  background-color: rgba(234, 67, 53, 0.1) !important;
+}
+
+/* Empty State inside custom folder */
+.custom-folder-empty-state {
+  text-align: center;
+  padding: 48px 20px;
+  background-color: var(--md-sys-color-surface-variant);
+  border-radius: 16px;
+  border: 1px dashed var(--md-sys-color-outline-variant);
+}
+
+.custom-folder-empty-state .empty-icon {
+  margin-bottom: 12px;
+  opacity: 0.8;
+}
+
+.custom-folder-empty-state h3 {
+  font-size: 16px;
+  color: var(--md-sys-color-on-surface);
+  margin-bottom: 6px;
+}
+
+.custom-folder-empty-state p {
+  font-size: 13px;
+  color: var(--md-sys-color-on-surface-variant);
+  max-width: 400px;
+  margin: 0 auto;
+}
+
+/* Color Picker in Modal */
+.color-picker-palette {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 0 16px 0;
+  flex-wrap: wrap;
+}
+
+.color-dot {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 0.2s, border-color 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.color-dot:hover {
+  transform: scale(1.15);
+}
+
+.color-dot.active {
+  border-color: var(--md-sys-color-on-surface);
+  transform: scale(1.15);
+  box-shadow: 0 0 0 2px var(--md-sys-color-surface);
+}
+
+/* Tool checklist in Folder modal */
+.tools-selection-container {
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: 12px;
+  max-height: 260px;
+  overflow-y: auto;
+  margin-top: 10px;
+  background-color: var(--md-sys-color-surface);
+}
+
+.tool-checkbox-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  cursor: pointer;
+  transition: background-color 0.15s;
+  user-select: none;
+}
+
+.tool-checkbox-item:last-child {
+  border-bottom: none;
+}
+
+.tool-checkbox-item:hover {
+  background-color: var(--md-sys-color-surface-hover);
+}
+
+.tool-checkbox-item.checked {
+  background-color: var(--md-sys-color-primary-container);
+}
+
+body.dark-theme .tool-checkbox-item.checked {
+  background-color: rgba(8, 66, 160, 0.4);
+}
+
+.tool-checkbox-item input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--md-sys-color-primary);
+  cursor: pointer;
+}
+
+.tool-checkbox-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.tool-checkbox-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--md-sys-color-on-surface);
+}
+
+.tool-checkbox-cat {
+  font-size: 11px;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+/* Folder Assign Button in table & card */
+.folder-assign-btn {
+  background: transparent;
+  border: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--md-sys-color-outline);
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.folder-assign-btn:hover {
+  background-color: var(--md-sys-color-surface-hover);
+  color: var(--md-sys-color-primary);
+}
+
+.folder-assign-btn.has-folders {
+  color: var(--md-sys-color-primary);
 }
 

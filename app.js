@@ -380,6 +380,27 @@ let favorites = JSON.parse(localStorage.getItem("tooldrive_favorites") || "[]");
 let recentTools = JSON.parse(localStorage.getItem("tooldrive_recents") || "[]");
 let quickNotes = localStorage.getItem("tooldrive_notes") || "";
 
+// Custom Folders State
+let customFolders = JSON.parse(localStorage.getItem("tooldrive_custom_folders") || "null");
+if (!customFolders || !Array.isArray(customFolders)) {
+  customFolders = [
+    {
+      id: "custom_ejemplo1",
+      name: "Ejemplo 1",
+      color: "#ea4335",
+      tools: ["doc-to-pdf", "image-compress", "qr-generator"]
+    }
+  ];
+  localStorage.setItem("tooldrive_custom_folders", JSON.stringify(customFolders));
+}
+
+function saveCustomFolders() {
+  localStorage.setItem("tooldrive_custom_folders", JSON.stringify(customFolders));
+  renderSidebarNav();
+  renderFolders();
+  renderTools();
+}
+
 // ==================== INITIALIZATION ====================
 document.addEventListener("DOMContentLoaded", () => {
   initTheme();
@@ -445,12 +466,46 @@ function renderSidebarNav() {
     </div>
   </div>`;
 
+  // Custom User Folders in Sidebar
+  html += `<div class="nav-divider"></div>`;
+  html += `
+    <div class="nav-section-header-wrap">
+      <span class="nav-section-title" style="padding: 0;">Carpetas</span>
+      <button class="nav-section-add-btn" onclick="openNewFolderModal()" title="Crear carpeta">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+          <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+        </svg>
+      </button>
+    </div>
+  `;
+  html += `<div class="nav-group">`;
+  if (customFolders.length === 0) {
+    html += `
+      <div class="nav-item" onclick="openNewFolderModal()" style="opacity: 0.7; font-style: italic;">
+        <span class="nav-icon" style="color: var(--md-sys-color-primary);">${ICONS.folder}</span>
+        <span>+ Nueva carpeta</span>
+      </div>
+    `;
+  } else {
+    customFolders.forEach(cf => {
+      const isActive = currentCategory === cf.id ? "active" : "";
+      html += `
+        <div class="nav-item ${isActive}" data-category="${cf.id}">
+          <span class="nav-icon" style="color: ${cf.color};">${ICONS.folder}</span>
+          <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${cf.name}</span>
+          <span class="badge">${cf.tools.length}</span>
+        </div>
+      `;
+    });
+  }
+  html += `</div>`;
+
   navContainer.innerHTML = html;
 
   navContainer.querySelectorAll(".nav-item").forEach(item => {
     item.addEventListener("click", () => {
       const cat = item.getAttribute("data-category");
-      setCategory(cat);
+      if (cat) setCategory(cat);
     });
   });
 }
@@ -459,7 +514,7 @@ function renderFolders() {
   const foldersContainer = document.getElementById("foldersGrid");
   if (!foldersContainer) return;
 
-  const folders = [
+  const defaultFolders = [
     { id: "pdf", name: "Gestión de PDF", iconColor: "#ea4335", count: "7 herramientas", sub: "Documentos oficiales" },
     { id: "image", name: "Edición de Imágenes", iconColor: "#34a853", count: "9 herramientas", sub: "Fotos y gráficos" },
     { id: "media", name: "Audio y Video", iconColor: "#9c27b0", count: "5 herramientas", sub: "Formatos multimedia" },
@@ -467,7 +522,7 @@ function renderFolders() {
     { id: "dev", name: "Web y Desarrollador", iconColor: "#1a73e8", count: "4 herramientas", sub: "QR, Colores y JSON" }
   ];
 
-  foldersContainer.innerHTML = folders.map(f => `
+  let html = defaultFolders.map(f => `
     <div class="folder-card ${currentCategory === f.id ? 'active' : ''}" onclick="setCategory('${f.id}')">
       <div class="folder-icon" style="color: ${f.iconColor}">
         ${ICONS.folder}
@@ -479,6 +534,42 @@ function renderFolders() {
       <div class="folder-more">${ICONS.more}</div>
     </div>
   `).join("");
+
+  // Add custom folders
+  customFolders.forEach(cf => {
+    const isActive = currentCategory === cf.id ? 'active' : '';
+    html += `
+      <div class="folder-card folder-card-custom ${isActive}" onclick="setCategory('${cf.id}')">
+        <div class="folder-icon" style="color: ${cf.color}">
+          ${ICONS.folder}
+        </div>
+        <div class="folder-info">
+          <div class="folder-name" title="${cf.name}">${cf.name}</div>
+          <div class="folder-meta">${cf.tools.length} ${cf.tools.length === 1 ? 'herramienta' : 'herramientas'}</div>
+        </div>
+        <div class="folder-more" onclick="event.stopPropagation(); openNewFolderModal('${cf.id}')" title="Editar carpeta">
+          ${ICONS.more}
+        </div>
+      </div>
+    `;
+  });
+
+  // Add "+ Nueva carpeta" card
+  html += `
+    <div class="folder-card folder-card-add" onclick="openNewFolderModal()" title="Crear nueva carpeta personalizada">
+      <div class="folder-icon" style="color: var(--md-sys-color-primary)">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
+          <path d="M20 6h-8l-2-2H4c-1.11 0-1.99.89-1.99 2L2 18c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V8c0-1.11-.89-2-2-2zm-1 8h-3v3h-2v-3h-3v-2h3V9h2v3h3v2z"/>
+        </svg>
+      </div>
+      <div class="folder-info">
+        <div class="folder-name" style="color: var(--md-sys-color-primary); font-weight: 600;">+ Nueva carpeta</div>
+        <div class="folder-meta">Personalizada</div>
+      </div>
+    </div>
+  `;
+
+  foldersContainer.innerHTML = html;
 }
 
 function getFilteredTools() {
@@ -488,7 +579,10 @@ function getFilteredTools() {
     if (currentCategory === "all") matchesCategory = true;
     else if (currentCategory === "favorites") matchesCategory = favorites.includes(tool.id);
     else if (currentCategory === "recents") matchesCategory = recentTools.includes(tool.id);
-    else matchesCategory = tool.category === currentCategory;
+    else if (currentCategory.startsWith("custom_")) {
+      const customFolder = customFolders.find(cf => cf.id === currentCategory);
+      matchesCategory = customFolder ? customFolder.tools.includes(tool.id) : false;
+    } else matchesCategory = tool.category === currentCategory;
 
     // Search filter
     if (!matchesCategory) return false;
@@ -510,7 +604,54 @@ function renderTools() {
 
   if (!listContainer) return;
 
+  // Custom folder header if inside a custom folder
+  let headerHtml = "";
+  if (currentCategory.startsWith("custom_")) {
+    const activeFolder = customFolders.find(cf => cf.id === currentCategory);
+    if (activeFolder) {
+      headerHtml = `
+        <div class="custom-folder-header-bar">
+          <div class="custom-folder-title-wrap">
+            <div class="custom-folder-icon-circle" style="color: ${activeFolder.color};">
+              ${ICONS.folder}
+            </div>
+            <div>
+              <div class="custom-folder-title">${activeFolder.name}</div>
+              <div class="custom-folder-subtitle">Carpeta personalizada • ${filtered.length} ${filtered.length === 1 ? 'herramienta' : 'herramientas'}</div>
+            </div>
+          </div>
+          <div class="custom-folder-actions">
+            <button class="ui-btn ui-btn-primary custom-folder-btn" onclick="openAddToolsToFolderModal('${activeFolder.id}')">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+              <span>Gestionar herramientas</span>
+            </button>
+            <button class="ui-btn ui-btn-outlined custom-folder-btn danger-btn" onclick="deleteCustomFolder('${activeFolder.id}')" title="Eliminar carpeta">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+              <span>Eliminar</span>
+            </button>
+          </div>
+        </div>
+      `;
+    }
+  }
+
   if (filtered.length === 0) {
+    if (currentCategory.startsWith("custom_")) {
+      const activeFolder = customFolders.find(cf => cf.id === currentCategory);
+      listContainer.innerHTML = headerHtml + `
+        <div class="custom-folder-empty-state">
+          <div class="empty-icon" style="color: ${activeFolder ? activeFolder.color : '#ea4335'};">${ICONS.folder}</div>
+          <h3>Esta carpeta está vacía</h3>
+          <p>Añade las herramientas que más utilizas para tenerlas organizadas y a mano.</p>
+          <button class="ui-btn ui-btn-primary" onclick="openAddToolsToFolderModal('${currentCategory}')" style="margin-top: 14px;">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+            <span>Añadir herramientas</span>
+          </button>
+        </div>
+      `;
+      return;
+    }
+
     listContainer.innerHTML = `
       <div style="text-align: center; padding: 48px 20px; color: #747775;">
         <svg viewBox="0 0 24 24" width="48" height="48" fill="currentColor" style="opacity: 0.5; margin-bottom: 12px;"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
@@ -523,7 +664,7 @@ function renderTools() {
 
   if (currentView === "list") {
     // Render Google Drive Style Table
-    let tableHtml = `
+    let tableHtml = headerHtml + `
       <div class="tools-table-container">
         <table class="tools-table">
           <thead>
@@ -539,6 +680,7 @@ function renderTools() {
 
     filtered.forEach(tool => {
       const isStarred = favorites.includes(tool.id);
+      const isInFolder = customFolders.some(f => f.tools.includes(tool.id));
       tableHtml += `
         <tr class="tool-row" onclick="openToolModal('${tool.id}')">
           <td>
@@ -557,6 +699,11 @@ function renderTools() {
             </div>
           </td>
           <td class="tool-actions-cell" onclick="event.stopPropagation()">
+            <button class="folder-assign-btn ${isInFolder ? 'has-folders' : ''}" onclick="openAssignToolModal('${tool.id}', event)" title="Organizar en carpetas">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                <path d="M20 6h-8l-2-2H4c-1.11 0-1.99.89-1.99 2L2 18c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V8c0-1.11-.89-2-2-2zm-1 8h-3v3h-2v-3h-3v-2h3V9h2v3h3v2z"/>
+              </svg>
+            </button>
             <button class="star-btn ${isStarred ? 'starred' : ''}" onclick="toggleFavorite('${tool.id}', event)" title="Destacar">
               ${isStarred ? ICONS.starFilled : ICONS.star}
             </button>
@@ -576,9 +723,10 @@ function renderTools() {
     listContainer.innerHTML = tableHtml;
   } else {
     // Render Grid View
-    let gridHtml = `<div class="tools-grid">`;
+    let gridHtml = headerHtml + `<div class="tools-grid">`;
     filtered.forEach(tool => {
       const isStarred = favorites.includes(tool.id);
+      const isInFolder = customFolders.some(f => f.tools.includes(tool.id));
       gridHtml += `
         <div class="tool-card" onclick="openToolModal('${tool.id}')">
           <div class="tool-card-top">
@@ -592,6 +740,11 @@ function renderTools() {
           <div class="tool-card-footer" onclick="event.stopPropagation()">
             <span style="font-size: 11px; color: #747775;">${tool.categoryName}</span>
             <div style="display: flex; align-items: center; gap: 4px;">
+              <button class="folder-assign-btn ${isInFolder ? 'has-folders' : ''}" onclick="openAssignToolModal('${tool.id}', event)" title="Organizar en carpetas">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                  <path d="M20 6h-8l-2-2H4c-1.11 0-1.99.89-1.99 2L2 18c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V8c0-1.11-.89-2-2-2zm-1 8h-3v3h-2v-3h-3v-2h3V9h2v3h3v2z"/>
+                </svg>
+              </button>
               <button class="star-btn ${isStarred ? 'starred' : ''}" onclick="toggleFavorite('${tool.id}', event)">
                 ${isStarred ? ICONS.starFilled : ICONS.star}
               </button>
@@ -621,7 +774,10 @@ function setCategory(cat) {
     if (cat === "all") bannerTitle.innerHTML = "Te damos la bienvenida a <strong>ToolDrive</strong>";
     else if (cat === "favorites") bannerTitle.innerHTML = "Herramientas <strong>Destacadas</strong>";
     else if (cat === "recents") bannerTitle.innerHTML = "Herramientas <strong>Recientes</strong>";
-    else {
+    else if (cat.startsWith("custom_")) {
+      const customFolder = customFolders.find(cf => cf.id === cat);
+      bannerTitle.innerHTML = `Carpeta: <strong>${customFolder ? customFolder.name : 'Personalizada'}</strong>`;
+    } else {
       const folder = TOOLS.find(t => t.category === cat);
       bannerTitle.innerHTML = `Categoría: <strong>${folder ? folder.categoryName : cat}</strong>`;
     }
@@ -777,6 +933,324 @@ window.closeToolModal = function() {
   if (window.speechRecognitionInstance) {
     try { window.speechRecognitionInstance.stop(); } catch(e) {}
   }
+};
+
+// ==================== STATIC MODAL BACKDROP HANDLER ====================
+window.handleStaticBackdropClick = function(event) {
+  if (event.target === event.currentTarget) {
+    const modal = event.currentTarget.querySelector(".tool-modal");
+    if (modal) {
+      modal.classList.remove("static-pulse");
+      void modal.offsetWidth; // trigger reflow
+      modal.classList.add("static-pulse");
+    }
+  }
+};
+
+// ==================== CUSTOM FOLDERS MANAGEMENT ====================
+let selectedFolderColor = "#ea4335";
+const FOLDER_COLORS = ["#ea4335", "#1a73e8", "#34a853", "#f9ab00", "#9c27b0", "#009688", "#e91e63", "#ff6d00"];
+
+window.openNewFolderModal = function(editFolderId = null) {
+  const backdrop = document.getElementById("customFolderModalBackdrop");
+  const modalTitle = document.getElementById("folderModalTitle");
+  const modalIcon = document.getElementById("folderModalIcon");
+  const modalBody = document.getElementById("folderModalBody");
+  const modalFooter = document.getElementById("folderModalFooter");
+
+  let existingFolder = null;
+  if (editFolderId) {
+    existingFolder = customFolders.find(cf => cf.id === editFolderId);
+  }
+
+  const isEditing = !!existingFolder;
+  modalTitle.innerText = isEditing ? "Editar Carpeta Personalizada" : "Nueva Carpeta Personalizada";
+  selectedFolderColor = isEditing ? existingFolder.color : "#ea4335";
+  modalIcon.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22" fill="${selectedFolderColor}"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>`;
+
+  const initialTools = isEditing ? existingFolder.tools : [];
+
+  // Build Body
+  let bodyHtml = `
+    <div class="ui-control-group">
+      <label class="ui-control-label">Nombre de la carpeta</label>
+      <input type="text" id="folderNameInput" class="ui-input" placeholder="Ejemplo 1, Documentos Contables, etc." value="${isEditing ? existingFolder.name : ''}" autofocus />
+    </div>
+
+    <div class="ui-control-group">
+      <label class="ui-control-label">Color de la carpeta</label>
+      <div class="color-picker-palette" id="folderColorPalette">
+        ${FOLDER_COLORS.map(c => `
+          <div class="color-dot ${c === selectedFolderColor ? 'active' : ''}" style="background-color: ${c};" onclick="selectFolderColor('${c}')" data-color="${c}"></div>
+        `).join("")}
+      </div>
+    </div>
+
+    <div class="ui-control-group">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+        <label class="ui-control-label" style="margin-bottom: 0;">Selecciona las herramientas a incluir</label>
+        <div style="font-size: 12px; display: flex; gap: 8px;">
+          <a href="javascript:void(0)" onclick="toggleAllToolsInFolderModal(true)" style="color: var(--md-sys-color-primary); text-decoration: none; font-weight: 500;">Marcar todas</a>
+          <span style="color: var(--md-sys-color-outline);">|</span>
+          <a href="javascript:void(0)" onclick="toggleAllToolsInFolderModal(false)" style="color: var(--md-sys-color-primary); text-decoration: none; font-weight: 500;">Desmarcar todas</a>
+        </div>
+      </div>
+      <input type="text" id="toolFilterInModal" class="ui-input" placeholder="Buscar herramientas para añadir..." oninput="filterToolsInFolderModal()" style="margin-bottom: 8px;" />
+      
+      <div class="tools-selection-container" id="toolsSelectionList">
+        ${TOOLS.map(t => {
+          const isChecked = initialTools.includes(t.id);
+          return `
+            <div class="tool-checkbox-item ${isChecked ? 'checked' : ''}" data-tool-id="${t.id}" onclick="toggleToolCheckboxItem(this, event)">
+              <input type="checkbox" id="chk_tool_${t.id}" value="${t.id}" ${isChecked ? 'checked' : ''} onclick="event.stopPropagation(); updateToolCheckboxVisual(this);" />
+              <div class="tool-file-icon">${getFileIcon(t.iconType)}</div>
+              <div class="tool-checkbox-info">
+                <div class="tool-checkbox-title">${t.title}</div>
+                <div class="tool-checkbox-cat">${t.categoryName}</div>
+              </div>
+            </div>
+          `;
+        }).join("")}
+      </div>
+      <div style="display: flex; justify-content: space-between; margin-top: 8px; font-size: 12px; color: var(--md-sys-color-on-surface-variant);">
+        <span id="selectedToolsCountText">${initialTools.length} herramientas seleccionadas</span>
+        <span>Total: ${TOOLS.length} disponibles</span>
+      </div>
+    </div>
+  `;
+
+  modalBody.innerHTML = bodyHtml;
+
+  // Build Footer
+  modalFooter.innerHTML = `
+    <button class="ui-btn ui-btn-outlined" onclick="closeFolderModal()">Cancelar</button>
+    <button class="ui-btn ui-btn-primary" onclick="saveCustomFolder('${editFolderId || ''}')">
+      ${isEditing ? 'Guardar Cambios' : 'Crear Carpeta'}
+    </button>
+  `;
+
+  backdrop.classList.add("open");
+  setTimeout(() => {
+    const input = document.getElementById("folderNameInput");
+    if (input) input.focus();
+  }, 100);
+};
+
+window.closeFolderModal = function() {
+  const backdrop = document.getElementById("customFolderModalBackdrop");
+  if (backdrop) backdrop.classList.remove("open");
+};
+
+window.selectFolderColor = function(color) {
+  selectedFolderColor = color;
+  document.querySelectorAll("#folderColorPalette .color-dot").forEach(dot => {
+    dot.classList.toggle("active", dot.getAttribute("data-color") === color);
+  });
+  const icon = document.getElementById("folderModalIcon");
+  if (icon) {
+    icon.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22" fill="${color}"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.89 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>`;
+  }
+};
+
+window.toggleToolCheckboxItem = function(rowElement, event) {
+  if (event.target.tagName === "INPUT") return;
+  const chk = rowElement.querySelector('input[type="checkbox"]');
+  if (chk) {
+    chk.checked = !chk.checked;
+    updateToolCheckboxVisual(chk);
+  }
+};
+
+window.updateToolCheckboxVisual = function(chk) {
+  const row = chk.closest(".tool-checkbox-item");
+  if (row) {
+    row.classList.toggle("checked", chk.checked);
+  }
+  updateSelectedToolsCount();
+};
+
+function updateSelectedToolsCount() {
+  const checked = document.querySelectorAll('#toolsSelectionList input[type="checkbox"]:checked');
+  const countSpan = document.getElementById("selectedToolsCountText");
+  if (countSpan) {
+    countSpan.innerText = `${checked.length} herramientas seleccionadas`;
+  }
+}
+
+window.toggleAllToolsInFolderModal = function(select) {
+  document.querySelectorAll('#toolsSelectionList .tool-checkbox-item').forEach(item => {
+    if (item.style.display !== "none") {
+      const chk = item.querySelector('input[type="checkbox"]');
+      if (chk) {
+        chk.checked = select;
+        item.classList.toggle("checked", select);
+      }
+    }
+  });
+  updateSelectedToolsCount();
+};
+
+window.filterToolsInFolderModal = function() {
+  const query = (document.getElementById("toolFilterInModal")?.value || "").toLowerCase().trim();
+  document.querySelectorAll('#toolsSelectionList .tool-checkbox-item').forEach(item => {
+    const text = item.innerText.toLowerCase();
+    item.style.display = text.includes(query) ? "flex" : "none";
+  });
+};
+
+window.saveCustomFolder = function(folderId = "") {
+  const nameInput = document.getElementById("folderNameInput");
+  const name = nameInput ? nameInput.value.trim() : "";
+  if (!name) {
+    showToast("Por favor, ingresa un nombre para la carpeta");
+    if (nameInput) nameInput.focus();
+    return;
+  }
+
+  const checkedCheckboxes = document.querySelectorAll('#toolsSelectionList input[type="checkbox"]:checked');
+  const selectedTools = Array.from(checkedCheckboxes).map(c => c.value);
+
+  if (folderId) {
+    // Editing
+    const folderIndex = customFolders.findIndex(cf => cf.id === folderId);
+    if (folderIndex !== -1) {
+      customFolders[folderIndex].name = name;
+      customFolders[folderIndex].color = selectedFolderColor;
+      customFolders[folderIndex].tools = selectedTools;
+      showToast(`Carpeta "${name}" actualizada`);
+    }
+  } else {
+    // Creating
+    const newId = "custom_" + Date.now();
+    customFolders.push({
+      id: newId,
+      name: name,
+      color: selectedFolderColor,
+      tools: selectedTools
+    });
+    currentCategory = newId;
+    showToast(`Carpeta "${name}" creada`);
+  }
+
+  saveCustomFolders();
+  closeFolderModal();
+};
+
+window.deleteCustomFolder = function(folderId) {
+  const folder = customFolders.find(cf => cf.id === folderId);
+  if (!folder) return;
+
+  if (confirm(`¿Estás seguro de que deseas eliminar la carpeta "${folder.name}"? Las herramientas seguirán estando disponibles.`)) {
+    customFolders = customFolders.filter(cf => cf.id !== folderId);
+    if (currentCategory === folderId) {
+      currentCategory = "all";
+    }
+    saveCustomFolders();
+    showToast(`Carpeta "${folder.name}" eliminada`);
+  }
+};
+
+window.openAddToolsToFolderModal = function(folderId) {
+  openNewFolderModal(folderId);
+};
+
+// ==================== ASSIGN TOOL TO FOLDERS QUICK MODAL ====================
+let currentAssignToolId = null;
+
+window.openAssignToolModal = function(toolId, event) {
+  if (event) event.stopPropagation();
+  currentAssignToolId = toolId;
+  const tool = TOOLS.find(t => t.id === toolId);
+  if (!tool) return;
+
+  const backdrop = document.getElementById("assignToolModalBackdrop");
+  const title = document.getElementById("assignModalTitle");
+  const subtitle = document.getElementById("assignModalSubtitle");
+  const body = document.getElementById("assignModalBody");
+  const footer = document.getElementById("assignModalFooter");
+
+  title.innerText = "Organizar en Carpetas";
+  subtitle.innerText = tool.title;
+
+  let bodyHtml = "";
+  if (customFolders.length === 0) {
+    bodyHtml = `
+      <div style="text-align: center; padding: 20px;">
+        <p style="color: var(--md-sys-color-on-surface-variant); font-size: 13px; margin-bottom: 14px;">
+          Aún no tienes carpetas personalizadas creadas.
+        </p>
+        <button class="ui-btn ui-btn-primary" onclick="closeAssignToolModal(); openNewFolderModal();">
+          + Crear primera carpeta
+        </button>
+      </div>
+    `;
+  } else {
+    bodyHtml = `
+      <p style="font-size: 13px; color: var(--md-sys-color-on-surface-variant); margin-bottom: 12px;">
+        Marca las carpetas donde deseas incluir <strong>${tool.title}</strong>:
+      </p>
+      <div class="tools-selection-container" style="max-height: 220px;">
+        ${customFolders.map(cf => {
+          const isIncluded = cf.tools.includes(tool.id);
+          return `
+            <div class="tool-checkbox-item ${isIncluded ? 'checked' : ''}" onclick="toggleToolInFolder('${cf.id}', '${tool.id}', this, event)">
+              <input type="checkbox" id="chk_assign_${cf.id}" ${isIncluded ? 'checked' : ''} onclick="event.stopPropagation(); toggleToolInFolderDirect('${cf.id}', '${tool.id}', this);" />
+              <div class="tool-file-icon" style="color: ${cf.color};">${ICONS.folder}</div>
+              <div class="tool-checkbox-info">
+                <div class="tool-checkbox-title">${cf.name}</div>
+                <div class="tool-checkbox-cat">${cf.tools.length} ${cf.tools.length === 1 ? 'herramienta' : 'herramientas'}</div>
+              </div>
+            </div>
+          `;
+        }).join("")}
+      </div>
+      <div style="margin-top: 14px; text-align: center;">
+        <button class="ui-btn ui-btn-outlined" onclick="closeAssignToolModal(); openNewFolderModal();" style="font-size: 12px; padding: 6px 14px;">
+          + Crear otra carpeta
+        </button>
+      </div>
+    `;
+  }
+
+  body.innerHTML = bodyHtml;
+  footer.innerHTML = `
+    <button class="ui-btn ui-btn-primary" onclick="closeAssignToolModal()">Listo</button>
+  `;
+
+  backdrop.classList.add("open");
+};
+
+window.closeAssignToolModal = function() {
+  const backdrop = document.getElementById("assignToolModalBackdrop");
+  if (backdrop) backdrop.classList.remove("open");
+  currentAssignToolId = null;
+};
+
+window.toggleToolInFolder = function(folderId, toolId, rowElement, event) {
+  if (event.target.tagName === "INPUT") return;
+  const chk = rowElement.querySelector('input[type="checkbox"]');
+  if (chk) {
+    chk.checked = !chk.checked;
+    toggleToolInFolderDirect(folderId, toolId, chk);
+  }
+};
+
+window.toggleToolInFolderDirect = function(folderId, toolId, chk) {
+  const folder = customFolders.find(cf => cf.id === folderId);
+  if (!folder) return;
+
+  const row = chk.closest(".tool-checkbox-item");
+  if (chk.checked) {
+    if (!folder.tools.includes(toolId)) folder.tools.push(toolId);
+    if (row) row.classList.add("checked");
+    showToast(`Añadido a "${folder.name}"`);
+  } else {
+    folder.tools = folder.tools.filter(t => t !== toolId);
+    if (row) row.classList.remove("checked");
+    showToast(`Removido de "${folder.name}"`);
+  }
+
+  saveCustomFolders();
 };
 
 // ==================== WORKSPACE BUILDER FOR TOOLS ====================

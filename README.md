@@ -69,9 +69,12 @@ Luego visita `http://localhost:8000` en tu navegador.
 ---
 
 ## ✨ Características de diseño estilo Google Drive & iOS
+- **Carpetas Personalizadas**: Crea tus propias carpetas (ej. "Ejemplo 1") con color personalizado y añade las herramientas que quieras organizar.
+- **Gestión Rápida de Herramientas**: Botón de carpeta en cada fila/tarjeta para asignar o desasignar herramientas en 1 clic.
+- **Ventanas Modales Estáticas**: Las herramientas permanecen abiertas sin cerrarse por accidente si haces clic en el fondo desenfocado; se cierran únicamente con el botón "Cerrar", "Cancelar" o la cruz.
 - **Barra de búsqueda superior**: Búsqueda ancha en tiempo real con atajo de teclado (`/`).
 - **Interruptor Modo Oscuro tipo iPhone**: Switch deslizante suave con iconos vectoriales de sol y luna diseñados a medida.
-- **Scrollbar flotante estilo iPhone / iOS**: Barra de desplazamiento vertical ultra delgada, cápsula flotante translúcida y pista transparente.
-- **Vista de Lista y Cuadrícula**: Alternador moderno (tabla limpia con columnas de Nombre, Motivo y Ubicación, o cuadrícula de tarjetas).
+- **Interfaz 100% limpia sin barras toscas**: Desplazamiento fluido sin líneas de scrollbar molestas a la derecha.
+- **Vista de Lista y Cuadrícula**: Alternador moderno (tabla limpia con columnas de Nombre, Motivo, Ubicación y Acción, o cuadrícula de tarjetas).
 - **Favoritos (Destacados)**: Guarda tus herramientas favoritas con persistencia local en `localStorage`.
 - **Privacidad Total**: Todo el procesamiento se realiza localmente en el navegador, tus archivos nunca se suben a ningún servidor externo.
