@@ -672,7 +672,7 @@ function renderTools() {
               <th style="width: 320px;">Nombre</th>
               <th>Motivo por el que se te sugiere</th>
               <th>Ubicación</th>
-              <th style="text-align: right; padding-right: 20px;">Acción</th>
+              <th style="text-align: right; padding-right: 20px; width: 80px;"></th>
             </tr>
           </thead>
           <tbody>
@@ -706,9 +706,6 @@ function renderTools() {
             </button>
             <button class="star-btn ${isStarred ? 'starred' : ''}" onclick="toggleFavorite('${tool.id}', event)" title="Destacar">
               ${isStarred ? ICONS.starFilled : ICONS.star}
-            </button>
-            <button class="tool-btn-run" onclick="openToolModal('${tool.id}')">
-              <span>Abrir</span>
             </button>
           </td>
         </tr>
@@ -747,9 +744,6 @@ function renderTools() {
               </button>
               <button class="star-btn ${isStarred ? 'starred' : ''}" onclick="toggleFavorite('${tool.id}', event)">
                 ${isStarred ? ICONS.starFilled : ICONS.star}
-              </button>
-              <button class="tool-btn-run" onclick="openToolModal('${tool.id}')">
-                Abrir
               </button>
             </div>
           </div>
