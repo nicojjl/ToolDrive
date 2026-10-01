@@ -199,6 +199,97 @@
     </div>
   </div>
 
+  <!-- ==================== MENÚ CONTEXTUAL DE 3 PUNTOS PARA CARPETAS ==================== -->
+  <div id="folderContextMenu" class="drive-context-menu" style="display: none;">
+    <div class="context-menu-item" onclick="handleFolderRename(currentContextMenuFolderId)">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+        <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
+      </svg>
+      <span>Modificar nombre</span>
+    </div>
+    <div class="context-menu-item" onclick="handleFolderChangeColor(currentContextMenuFolderId)">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+        <path d="M12 3c-4.97 0-9 4.03-9 9 0 2.12.74 4.07 1.97 5.61L4.35 19.4c-.39.39-.39 1.02 0 1.41.39.39 1.02.39 1.41 0l1.9-1.9C9.22 19.58 10.57 20 12 20c4.97 0 9-4.03 9-9s-4.03-9-9-9zm0 15c-3.31 0-6-2.69-6-6s2.69-6 6-6 6 2.69 6 6-2.69 6-6 6z"/>
+      </svg>
+      <span>Cambiar color</span>
+    </div>
+    <div class="context-menu-item" id="ctxManageToolsOption" onclick="handleFolderManageTools(currentContextMenuFolderId)">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+        <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+      </svg>
+      <span>Gestionar herramientas</span>
+    </div>
+    <div class="context-menu-divider"></div>
+    <div class="context-menu-item danger" onclick="handleFolderDelete(currentContextMenuFolderId)">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+        <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
+      </svg>
+      <span>Eliminar carpeta</span>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL CAMBIAR NOMBRE DE CARPETA ==================== -->
+  <div id="renameFolderModalBackdrop" class="tool-modal-backdrop" onclick="handleStaticBackdropClick(event)">
+    <div class="tool-modal" style="max-width: 440px;">
+      <div class="tool-modal-header">
+        <div class="modal-header-left">
+          <div class="modal-tool-icon" style="color: var(--md-sys-color-primary);">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+              <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
+            </svg>
+          </div>
+          <div>
+            <div class="modal-tool-title">Modificar nombre</div>
+            <span class="modal-tool-category">Editar carpeta</span>
+          </div>
+        </div>
+        <div class="modal-header-actions">
+          <button class="icon-btn" title="Cerrar" onclick="closeRenameFolderModal()">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="tool-modal-body" style="padding: 20px;">
+        <label class="ui-control-label">Nuevo nombre para la carpeta</label>
+        <input type="text" id="renameFolderInput" class="ui-input" autofocus />
+      </div>
+      <div class="tool-modal-footer">
+        <button class="ui-btn ui-btn-outlined" onclick="closeRenameFolderModal()">Cancelar</button>
+        <button class="ui-btn ui-btn-primary" onclick="confirmRenameFolder()">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL CAMBIAR COLOR DE CARPETA ==================== -->
+  <div id="changeColorFolderModalBackdrop" class="tool-modal-backdrop" onclick="handleStaticBackdropClick(event)">
+    <div class="tool-modal" style="max-width: 440px;">
+      <div class="tool-modal-header">
+        <div class="modal-header-left">
+          <div class="modal-tool-icon" id="quickColorIcon">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="#ea4335"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
+          </div>
+          <div>
+            <div class="modal-tool-title">Cambiar color</div>
+            <span class="modal-tool-category">Color de carpeta</span>
+          </div>
+        </div>
+        <div class="modal-header-actions">
+          <button class="icon-btn" title="Cerrar" onclick="closeChangeColorFolderModal()">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="tool-modal-body" style="padding: 20px;">
+        <label class="ui-control-label">Elige un nuevo color:</label>
+        <div class="color-picker-palette" id="quickFolderColorPalette"></div>
+      </div>
+      <div class="tool-modal-footer">
+        <button class="ui-btn ui-btn-outlined" onclick="closeChangeColorFolderModal()">Cancelar</button>
+        <button class="ui-btn ui-btn-primary" onclick="confirmChangeColorFolder()">Aplicar Color</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Contenedor de Notificaciones (Toasts) -->
   <div id="toastContainer" class="toast-container"></div>
 

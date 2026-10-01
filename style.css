@@ -570,7 +570,26 @@ body.dark-theme .moon-icon {
 }
 
 .folder-more {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: var(--md-sys-color-outline);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+  flex-shrink: 0;
+}
+
+.folder-more:hover {
+  background-color: rgba(0, 0, 0, 0.08);
+  color: var(--md-sys-color-on-surface);
+}
+
+body.dark-theme .folder-more:hover {
+  background-color: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
 }
 
 /* ==================== SECTION: TOOLS & VIEW CONTROLS ==================== */
@@ -1585,5 +1604,68 @@ body.dark-theme .tool-checkbox-item.checked {
 
 .folder-assign-btn.has-folders {
   color: var(--md-sys-color-primary);
+}
+
+/* ==================== DRIVE CONTEXT MENU ==================== */
+.drive-context-menu {
+  position: fixed;
+  z-index: 1000;
+  background-color: var(--md-sys-color-surface);
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.22);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  min-width: 200px;
+  padding: 6px 0;
+  animation: contextMenuFadeIn 0.15s ease-out;
+  user-select: none;
+}
+
+@keyframes contextMenuFadeIn {
+  from { opacity: 0; transform: translateY(-6px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--md-sys-color-on-surface);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.context-menu-item:hover {
+  background-color: var(--md-sys-color-surface-hover);
+}
+
+.context-menu-item svg {
+  flex-shrink: 0;
+}
+
+.context-menu-item.danger {
+  color: #ea4335;
+}
+
+.context-menu-item.danger:hover {
+  background-color: rgba(234, 67, 53, 0.1);
+}
+
+.context-menu-divider {
+  height: 1px;
+  background-color: var(--md-sys-color-outline-variant);
+  margin: 4px 0;
+}
+
+body.dark-theme .drive-context-menu {
+  background-color: #282a2c;
+  border-color: #3c4043;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.65);
+}
+
+body.dark-theme .context-menu-item:hover {
+  background-color: #333538;
 }
 
