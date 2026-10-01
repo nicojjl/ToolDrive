@@ -2769,18 +2769,45 @@ function buildToolWorkspace(tool, container, footer) {
           <input type="file" id="ocrFileInput" style="display: none;" accept="image/*,.pdf">
           <div class="ui-dropzone-icon">${ICONS.text}</div>
           <div class="ui-dropzone-title">Sube una foto, captura o escaneo de texto</div>
-          <div class="ui-dropzone-sub">Extracción automática de caracteres con alta precisión</div>
+          <div class="ui-dropzone-sub">Extracción automática de caracteres con inteligencia artificial OCR en tiempo real</div>
         </div>
 
         <div id="ocrResultWrap" style="display: none;">
-          <div style="display: grid; grid-template-columns: 200px 1fr; gap: 16px;">
-            <div style="background: #f0f4f9; border-radius: 8px; padding: 6px; display: flex; align-items: center; justify-content: center; max-height: 220px; overflow: hidden;">
-              <img id="ocrPreviewImg" style="max-width: 100%; max-height: 200px; object-fit: contain;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; gap: 10px; flex-wrap: wrap;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <label class="ui-control-label" style="margin-bottom: 0; font-size: 12px; font-weight: 600;">Idioma:</label>
+              <select id="ocrLangSelect" class="ui-select" style="width: auto; padding: 4px 10px; height: 32px; font-size: 13px;">
+                <option value="spa" selected>Español (spa)</option>
+                <option value="spa+eng">Español + Inglés</option>
+                <option value="eng">Inglés (eng)</option>
+              </select>
+            </div>
+            <button class="ui-btn ui-btn-outlined" style="padding: 4px 12px; height: 32px; font-size: 12px;" onclick="document.getElementById('ocrFileInput').click()">
+              📷 Cambiar imagen
+            </button>
+          </div>
+
+          <div id="ocrProgressWrap" style="display: none; margin-bottom: 14px; background: var(--md-sys-color-surface-variant); padding: 10px 14px; border-radius: 8px; border: 1px solid var(--md-sys-color-outline-variant);">
+            <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 6px;">
+              <span id="ocrStatusText" style="color: var(--md-sys-color-primary); font-weight: 500;">Preparando análisis...</span>
+              <span id="ocrPercentText" style="font-weight: 600;">0%</span>
+            </div>
+            <div class="storage-bar-bg" style="height: 6px;">
+              <div id="ocrBarFill" class="storage-bar-fill" style="width: 0%; transition: width 0.25s ease;"></div>
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 210px 1fr; gap: 16px;">
+            <div style="background: var(--md-sys-color-surface-variant); border-radius: 8px; padding: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; max-height: 230px; overflow: hidden; border: 1px solid var(--md-sys-color-outline-variant);">
+              <img id="ocrPreviewImg" style="max-width: 100%; max-height: 210px; object-fit: contain; border-radius: 4px;" alt="Vista previa" />
             </div>
             <div>
-              <div class="ui-control-group">
-                <label class="ui-control-label">Texto reconocido extraído (editable):</label>
-                <textarea id="ocrOutputText" class="ui-textarea" style="height: 180px; font-size: 14px; line-height: 1.5;"></textarea>
+              <div class="ui-control-group" style="margin-bottom: 0;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                  <label class="ui-control-label" style="margin-bottom: 0; font-size: 13px;">Texto reconocido extraído (editable):</label>
+                  <span id="ocrWordCharCount" style="font-size: 11px; color: var(--md-sys-color-on-surface-variant);">0 caracteres</span>
+                </div>
+                <textarea id="ocrOutputText" class="ui-textarea" style="height: 185px; font-size: 13.5px; line-height: 1.5; resize: vertical;" placeholder="El texto reconocido aparecerá aquí..."></textarea>
               </div>
             </div>
           </div>
@@ -2789,30 +2816,186 @@ function buildToolWorkspace(tool, container, footer) {
 
       footer.innerHTML = `
         <button class="ui-btn ui-btn-outlined" onclick="closeToolModal()">Cerrar</button>
-        <button id="btnCopyOcr" class="ui-btn ui-btn-primary" disabled onclick="navigator.clipboard.writeText(document.getElementById('ocrOutputText').value); showToast('Texto copiado')">Copiar Texto Extraído</button>
+        <button id="btnDownloadTxt" class="ui-btn ui-btn-outlined" disabled onclick="downloadOcrText()">Descargar .TXT</button>
+        <button id="btnCopyOcr" class="ui-btn ui-btn-primary" disabled onclick="copyOcrText()">Copiar Texto Extraído</button>
       `;
 
-      const fileInput = document.getElementById("ocrFileInput");
-      fileInput.addEventListener("change", (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
+      let currentOcrDataUrl = null;
 
+      function updateOcrProgress(pct, status) {
+        const progressWrap = document.getElementById("ocrProgressWrap");
+        const barFill = document.getElementById("ocrBarFill");
+        const statusText = document.getElementById("ocrStatusText");
+        const percentText = document.getElementById("ocrPercentText");
+
+        if (progressWrap) progressWrap.style.display = "block";
+        if (barFill) barFill.style.width = `${pct}%`;
+        if (percentText) percentText.innerText = `${pct}%`;
+        if (statusText && status) statusText.innerText = status;
+      }
+
+      function ensureTesseractReady() {
+        return new Promise((resolve, reject) => {
+          if (typeof Tesseract !== "undefined") return resolve();
+          const s = document.createElement("script");
+          s.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
+          s.onload = () => resolve();
+          s.onerror = () => {
+            const local = document.createElement("script");
+            local.src = "tesseract.min.js";
+            local.onload = () => resolve();
+            local.onerror = () => reject(new Error("No se pudo cargar la librería Tesseract.js"));
+            document.head.appendChild(local);
+          };
+          document.head.appendChild(s);
+        });
+      }
+
+      async function runOcrRecognition(dataUrl) {
+        currentOcrDataUrl = dataUrl;
+        const outputText = document.getElementById("ocrOutputText");
+        const btnCopy = document.getElementById("btnCopyOcr");
+        const btnDownload = document.getElementById("btnDownloadTxt");
+        const charCount = document.getElementById("ocrWordCharCount");
+        const langSelect = document.getElementById("ocrLangSelect");
+        const lang = langSelect ? langSelect.value : "spa";
+
+        outputText.value = "";
+        outputText.placeholder = "Escaneando imagen y reconociendo texto...";
+        btnCopy.setAttribute("disabled", "true");
+        btnDownload.setAttribute("disabled", "true");
+        if (charCount) charCount.innerText = "Procesando...";
+
+        updateOcrProgress(5, "Iniciando motor OCR...");
+
+        try {
+          await ensureTesseractReady();
+          updateOcrProgress(15, "Motor OCR cargado. Inicializando modelos de lenguaje...");
+
+          const result = await Tesseract.recognize(
+            dataUrl,
+            lang,
+            {
+              workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js',
+              corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.0/tesseract-core.wasm.js',
+              langPath: 'https://tessdata.projectnaptha.com/4.0.0_fast',
+              logger: m => {
+                if (m && m.status) {
+                  if (m.status === "loading tesseract core") {
+                    updateOcrProgress(25, "Cargando núcleo WASM...");
+                  } else if (m.status === "loading language traineddata") {
+                    const p = 30 + Math.round((m.progress || 0.1) * 35);
+                    updateOcrProgress(p, `Cargando diccionario de idioma (${lang})...`);
+                  } else if (m.status === "initializing api") {
+                    updateOcrProgress(68, "Configurando motor de caracteres...");
+                  } else if (m.status === "recognizing text") {
+                    const p = 70 + Math.round((m.progress || 0) * 30);
+                    updateOcrProgress(p, `Extrayendo texto de la imagen... (${p}%)`);
+                  }
+                }
+              }
+            }
+          );
+
+          const recognizedText = (result && result.data && result.data.text) ? result.data.text.trim() : "";
+
+          updateOcrProgress(100, "✓ ¡Reconocimiento óptico completado!");
+
+          if (recognizedText) {
+            outputText.value = recognizedText;
+            btnCopy.removeAttribute("disabled");
+            btnDownload.removeAttribute("disabled");
+            if (charCount) {
+              const words = recognizedText.split(/\s+/).filter(Boolean).length;
+              charCount.innerText = `${recognizedText.length} caracteres | ${words} palabras`;
+            }
+            showToast("✓ Texto extraído exitosamente");
+          } else {
+            outputText.value = "(No se detectó ningún texto claro en la imagen. Intenta con una imagen de mayor resolución o mejor iluminación)";
+            if (charCount) charCount.innerText = "0 caracteres";
+            showToast("No se detectó texto claro en la imagen");
+          }
+
+          setTimeout(() => {
+            const progressWrap = document.getElementById("ocrProgressWrap");
+            if (progressWrap) progressWrap.style.display = "none";
+          }, 2500);
+
+        } catch (err) {
+          console.error("Error en Tesseract OCR:", err);
+          updateOcrProgress(100, "⚠️ Error durante el reconocimiento");
+          const barFill = document.getElementById("ocrBarFill");
+          if (barFill) barFill.style.backgroundColor = "#ea4335";
+          outputText.value = "";
+          outputText.placeholder = "Ocurrió un error al procesar la imagen con OCR. Asegúrate de tener conexión para cargar los pesos del idioma.";
+          showToast("Error al procesar OCR. Verifica tu conexión.");
+        }
+      }
+
+      window.copyOcrText = function() {
+        const text = document.getElementById("ocrOutputText")?.value;
+        if (text) {
+          navigator.clipboard.writeText(text);
+          showToast("Texto copiado al portapapeles");
+        }
+      };
+
+      window.downloadOcrText = function() {
+        const text = document.getElementById("ocrOutputText")?.value;
+        if (!text) return;
+        const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+        const a = document.createElement("a");
+        a.download = "texto-extraido-tooldrive.txt";
+        a.href = URL.createObjectURL(blob);
+        a.click();
+        showToast("Archivo .txt descargado");
+      };
+
+      function handleOcrFile(file) {
+        if (!file) return;
         const reader = new FileReader();
         reader.onload = (ev) => {
           document.getElementById("ocrDropzone").style.display = "none";
           document.getElementById("ocrResultWrap").style.display = "block";
           document.getElementById("ocrPreviewImg").src = ev.target.result;
-          document.getElementById("btnCopyOcr").removeAttribute("disabled");
-
-          // Optical extraction mock with sample document detection
-          showToast("Analizando documento con OCR...");
-          setTimeout(() => {
-            document.getElementById("ocrOutputText").value = `DOCUMENTO RECONOCIDO CON ÉXITO\n----------------------------------------\nFecha de emisión: 30 de Septiembre de 2026\nAsunto: Reporte de productividad y digitalización\n\nEl presente texto ha sido reconocido ópticamente a partir de la imagen proporcionada. Se han conservado los párrafos, puntuación y caracteres alfanuméricos para su inmediata edición y reutilización en tus documentos oficiales de Drive.`;
-            showToast("✓ Texto extraído correctamente");
-          }, 800);
+          runOcrRecognition(ev.target.result);
         };
         reader.readAsDataURL(file);
+      }
+
+      const fileInput = document.getElementById("ocrFileInput");
+      fileInput.addEventListener("change", (e) => {
+        handleOcrFile(e.target.files[0]);
       });
+
+      const langSelect = document.getElementById("ocrLangSelect");
+      if (langSelect) {
+        langSelect.addEventListener("change", () => {
+          if (currentOcrDataUrl) {
+            runOcrRecognition(currentOcrDataUrl);
+          }
+        });
+      }
+
+      // Drag and Drop support
+      const dropzone = document.getElementById("ocrDropzone");
+      if (dropzone) {
+        dropzone.addEventListener("dragover", (e) => {
+          e.preventDefault();
+          dropzone.classList.add("dragover");
+        });
+        dropzone.addEventListener("dragleave", () => {
+          dropzone.classList.remove("dragover");
+        });
+        dropzone.addEventListener("drop", (e) => {
+          e.preventDefault();
+          dropzone.classList.remove("dragover");
+          if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) {
+            handleOcrFile(e.dataTransfer.files[0]);
+          }
+        });
+      }
+
       break;
     }
 
