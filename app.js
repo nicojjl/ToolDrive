@@ -832,10 +832,10 @@ function renderTools() {
         <table class="tools-table">
           <thead>
             <tr>
-              <th style="width: 320px;">Nombre</th>
+              <th class="th-name">Nombre</th>
               <th>Motivo por el que se te sugiere</th>
               <th>Ubicación</th>
-              <th style="text-align: right; padding-right: 20px; width: 80px;"><span class="sr-only">Acciones</span></th>
+              <th class="th-actions"><span class="sr-only">Acciones</span></th>
             </tr>
           </thead>
           <tbody>

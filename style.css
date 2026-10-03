@@ -669,6 +669,16 @@ body.dark-theme .folder-more:focus-visible {
   white-space: nowrap;
 }
 
+.tools-table th.th-name {
+  width: 320px;
+}
+
+.tools-table th.th-actions {
+  text-align: right;
+  padding-right: 20px;
+  width: 80px;
+}
+
 .tools-table td {
   padding: 8px 14px;
   border-bottom: 1px solid var(--md-sys-color-outline-variant);
@@ -698,6 +708,12 @@ body.dark-theme .folder-more:focus-visible {
   font-weight: 500;
   color: var(--md-sys-color-on-surface);
   white-space: nowrap;
+  min-width: 0;
+}
+
+.tool-name-cell span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .tool-file-icon {
@@ -1212,14 +1228,157 @@ body.dark-theme .folder-more:focus-visible {
     border-radius: 50%;
     margin: 0 auto;
   }
+  /* ≤900px: oculta columna Ubicación */
   .tools-table th:nth-child(3), .tools-table td:nth-child(3) {
     display: none;
   }
 }
 
 @media (max-width: 640px) {
+  .drive-header {
+    padding: 8px 12px;
+    gap: 8px;
+  }
+  .header-center {
+    margin-right: 0;
+  }
+  .search-box {
+    height: 40px;
+    padding: 0 12px;
+  }
+  .search-input {
+    font-size: 14px;
+  }
+  .search-input::placeholder {
+    font-size: 12px;
+  }
+  .drive-sidebar {
+    width: 56px;
+    padding: 6px 4px;
+  }
+  .nav-item {
+    width: 44px;
+    height: 44px;
+  }
+  .main-wrapper {
+    margin: 0 6px 6px 0;
+    border-radius: 16px;
+  }
+  .main-scrollable {
+    padding: 14px 10px;
+  }
+  .welcome-banner {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .welcome-title {
+    font-size: 19px;
+  }
+  .folders-grid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    margin-bottom: 20px;
+  }
+  .tools-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  /* ≤640px: oculta columna Motivo */
   .tools-table th:nth-child(2), .tools-table td:nth-child(2) {
     display: none;
+  }
+  .tools-table th.th-name {
+    width: auto;
+  }
+  .tools-table th.th-actions, .tools-table td.tool-actions-cell {
+    padding-right: 6px;
+    width: 68px;
+  }
+  .tools-table th, .tools-table td {
+    padding: 8px 6px;
+  }
+  .tool-name-cell {
+    gap: 8px;
+    min-width: 0;
+  }
+  .tool-name-cell span:last-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 140px;
+  }
+  /* Modal responsive (usable en pantallas estrechas) */
+  .tool-modal {
+    width: 95%;
+    max-width: 95%;
+    max-height: 94vh;
+    border-radius: 16px;
+  }
+  .tool-modal-header {
+    height: 54px;
+    padding: 0 12px;
+  }
+  .modal-tool-category {
+    display: none;
+  }
+  .modal-tool-title {
+    font-size: 15px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 190px;
+  }
+  .tool-modal-body {
+    padding: 14px 10px;
+  }
+  .tool-modal-footer {
+    padding: 10px 12px;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .tool-modal-footer .ui-btn {
+    flex: 1 1 auto;
+    font-size: 12px;
+    padding: 8px 10px;
+    justify-content: center;
+  }
+  /* Grids internas de herramientas (colapsan a 1 columna en móvil) */
+  .tool-modal-body div[style*="280px"],
+  .tool-modal-body div[style*="240px"],
+  .tool-modal-body div[style*="210px"] {
+    grid-template-columns: 1fr !important;
+    gap: 14px !important;
+  }
+}
+
+@media (max-width: 360px) {
+  .drive-sidebar {
+    width: 48px;
+    padding: 4px 2px;
+  }
+  .nav-item {
+    width: 40px;
+    height: 40px;
+  }
+  .main-wrapper {
+    margin: 0 2px 2px 0;
+    border-radius: 12px;
+  }
+  .main-scrollable {
+    padding: 10px 6px;
+  }
+  .drive-header {
+    padding: 6px 8px;
+    gap: 6px;
+  }
+  .tool-modal {
+    width: 98%;
+    max-width: 98%;
+  }
+  .modal-tool-title {
+    max-width: 150px;
   }
 }
 
@@ -1635,6 +1794,7 @@ body.dark-theme .tool-checkbox-item.checked {
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.22);
   border: 1px solid var(--md-sys-color-outline-variant);
   min-width: 200px;
+  max-width: calc(100vw - 20px);
   padding: 6px 0;
   animation: contextMenuFadeIn 0.15s ease-out;
   user-select: none;
