@@ -995,6 +995,13 @@ window.openToolModal = function(toolId) {
   buildToolWorkspace(tool, modalBody, modalFooter);
 
   backdrop.classList.add("open");
+
+  // Prevent default browser navigation when dropping files anywhere on modal or backdrop
+  if (!backdrop._dragPreventAttached) {
+    backdrop._dragPreventAttached = true;
+    backdrop.addEventListener("dragover", (e) => e.preventDefault());
+    backdrop.addEventListener("drop", (e) => e.preventDefault());
+  }
 };
 
 window.closeToolModal = function() {
@@ -1003,6 +1010,10 @@ window.closeToolModal = function() {
   // Clean speech synthesis or microphone if active
   if (window.speechRecognitionInstance) {
     try { window.speechRecognitionInstance.stop(); } catch(e) {}
+  }
+  // Clean OCR resources, terminate worker and revoke object URLs
+  if (window.cleanOcrResources) {
+    try { window.cleanOcrResources(); } catch(e) {}
   }
 };
 
@@ -3055,14 +3066,14 @@ function buildToolWorkspace(tool, container, footer) {
       break;
     }
 
-    // ---------------- OCR (TEXTO DESDE IMAGEN) ----------------
+    // ---------------- OCR (TEXTO DESDE IMAGEN - 100% OFFLINE) ----------------
     case "ocr": {
       container.innerHTML = `
         <div class="ui-dropzone" id="ocrDropzone" onclick="document.getElementById('ocrFileInput').click()">
-          <input type="file" id="ocrFileInput" style="display: none;" accept="image/*,.pdf">
+          <input type="file" id="ocrFileInput" style="display: none;" accept="image/*">
           <div class="ui-dropzone-icon">${ICONS.text}</div>
           <div class="ui-dropzone-title">Sube una foto, captura o escaneo de texto</div>
-          <div class="ui-dropzone-sub">Extracción automática de caracteres con inteligencia artificial OCR en tiempo real</div>
+          <div class="ui-dropzone-sub">Extracción de caracteres 100% local en tu navegador (sin conexión a internet)</div>
         </div>
 
         <div id="ocrResultWrap" style="display: none;">
@@ -3075,7 +3086,7 @@ function buildToolWorkspace(tool, container, footer) {
                 <option value="eng">Inglés (eng)</option>
               </select>
             </div>
-            <button class="ui-btn ui-btn-outlined" style="padding: 4px 12px; height: 32px; font-size: 12px;" onclick="document.getElementById('ocrFileInput').click()">
+            <button id="btnChangeOcrImg" class="ui-btn ui-btn-outlined" style="padding: 4px 12px; height: 32px; font-size: 12px;" onclick="document.getElementById('ocrFileInput').click()">
               📷 Cambiar imagen
             </button>
           </div>
@@ -3098,7 +3109,7 @@ function buildToolWorkspace(tool, container, footer) {
               <div class="ui-control-group" style="margin-bottom: 0;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                   <label class="ui-control-label" style="margin-bottom: 0; font-size: 13px;">Texto reconocido extraído (editable):</label>
-                  <span id="ocrWordCharCount" style="font-size: 11px; color: var(--md-sys-color-on-surface-variant);">0 caracteres</span>
+                  <span id="ocrWordCharCount" style="font-size: 11px; color: var(--md-sys-color-on-surface-variant);">0 caracteres | 0 palabras</span>
                 </div>
                 <textarea id="ocrOutputText" class="ui-textarea" style="height: 185px; font-size: 13.5px; line-height: 1.5; resize: vertical;" placeholder="El texto reconocido aparecerá aquí..."></textarea>
               </div>
@@ -3113,7 +3124,29 @@ function buildToolWorkspace(tool, container, footer) {
         <button id="btnCopyOcr" class="ui-btn ui-btn-primary" disabled onclick="copyOcrText()">Copiar Texto Extraído</button>
       `;
 
-      let currentOcrDataUrl = null;
+      let currentOcrObjectUrl = null;
+      let activeTesseractWorker = null;
+      let ocrRunId = 0;
+      let ocrProgressTimeout = null;
+
+      function revokeCurrentOcrObjectUrl() {
+        if (currentOcrObjectUrl) {
+          try { URL.revokeObjectURL(currentOcrObjectUrl); } catch (e) {}
+          currentOcrObjectUrl = null;
+        }
+      }
+
+      window.cleanOcrResources = function() {
+        if (activeTesseractWorker) {
+          try { activeTesseractWorker.terminate(); } catch (e) {}
+          activeTesseractWorker = null;
+        }
+        revokeCurrentOcrObjectUrl();
+        if (ocrProgressTimeout) {
+          clearTimeout(ocrProgressTimeout);
+          ocrProgressTimeout = null;
+        }
+      };
 
       function updateOcrProgress(pct, status) {
         const progressWrap = document.getElementById("ocrProgressWrap");
@@ -3130,65 +3163,93 @@ function buildToolWorkspace(tool, container, footer) {
       function ensureTesseractReady() {
         return new Promise((resolve, reject) => {
           if (typeof Tesseract !== "undefined") return resolve();
-          const s = document.createElement("script");
-          s.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
-          s.onload = () => resolve();
-          s.onerror = () => {
-            const local = document.createElement("script");
-            local.src = "tesseract.min.js";
-            local.onload = () => resolve();
-            local.onerror = () => reject(new Error("No se pudo cargar la librería Tesseract.js"));
-            document.head.appendChild(local);
-          };
-          document.head.appendChild(s);
+          const local = document.createElement("script");
+          local.src = "tesseract.min.js";
+          local.onload = () => resolve();
+          local.onerror = () => reject(new Error("No se pudo cargar la librería local tesseract.min.js"));
+          document.head.appendChild(local);
         });
       }
 
-      async function runOcrRecognition(dataUrl) {
-        currentOcrDataUrl = dataUrl;
+      async function runOcrRecognition(imageUrl) {
+        const runId = ++ocrRunId;
         const outputText = document.getElementById("ocrOutputText");
         const btnCopy = document.getElementById("btnCopyOcr");
         const btnDownload = document.getElementById("btnDownloadTxt");
         const charCount = document.getElementById("ocrWordCharCount");
         const langSelect = document.getElementById("ocrLangSelect");
+        const btnChangeImg = document.getElementById("btnChangeOcrImg");
         const lang = langSelect ? langSelect.value : "spa";
 
+        // Limpiar temporizador previo de ocultamiento de barra
+        if (ocrProgressTimeout) {
+          clearTimeout(ocrProgressTimeout);
+          ocrProgressTimeout = null;
+        }
+
+        // Resetear color de la barra (remover rojo previo de error)
+        const barFill = document.getElementById("ocrBarFill");
+        if (barFill) {
+          barFill.style.backgroundColor = "";
+          barFill.style.width = "0%";
+        }
+
         outputText.value = "";
-        outputText.placeholder = "Escaneando imagen y reconociendo texto...";
+        outputText.placeholder = "Escaneando imagen y reconociendo caracteres con motor local...";
         btnCopy.setAttribute("disabled", "true");
         btnDownload.setAttribute("disabled", "true");
         if (charCount) charCount.innerText = "Procesando...";
 
-        updateOcrProgress(5, "Iniciando motor OCR...");
+        // Bloquear select de idioma y botón para evitar carreras
+        if (langSelect) langSelect.setAttribute("disabled", "true");
+        if (btnChangeImg) btnChangeImg.setAttribute("disabled", "true");
+
+        updateOcrProgress(5, "Iniciando motor OCR local...");
 
         try {
           await ensureTesseractReady();
-          updateOcrProgress(15, "Motor OCR cargado. Inicializando modelos de lenguaje...");
+          if (runId !== ocrRunId) return;
 
-          const result = await Tesseract.recognize(
-            dataUrl,
-            lang,
-            {
-              workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js',
-              corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.0/tesseract-core.wasm.js',
-              langPath: 'https://tessdata.projectnaptha.com/4.0.0_fast',
-              logger: m => {
-                if (m && m.status) {
-                  if (m.status === "loading tesseract core") {
-                    updateOcrProgress(25, "Cargando núcleo WASM...");
-                  } else if (m.status === "loading language traineddata") {
-                    const p = 30 + Math.round((m.progress || 0.1) * 35);
-                    updateOcrProgress(p, `Cargando diccionario de idioma (${lang})...`);
-                  } else if (m.status === "initializing api") {
-                    updateOcrProgress(68, "Configurando motor de caracteres...");
-                  } else if (m.status === "recognizing text") {
-                    const p = 70 + Math.round((m.progress || 0) * 30);
-                    updateOcrProgress(p, `Extrayendo texto de la imagen... (${p}%)`);
-                  }
+          // Terminar worker anterior si estaba activo
+          if (activeTesseractWorker) {
+            try { await activeTesseractWorker.terminate(); } catch (e) {}
+            activeTesseractWorker = null;
+          }
+
+          updateOcrProgress(15, "Inicializando modelos de lenguaje locales...");
+
+          const worker = await Tesseract.createWorker(lang, 1, {
+            workerPath: 'ocr-assets/worker.min.js',
+            corePath: 'ocr-assets',
+            langPath: 'ocr-assets',
+            gzip: false,
+            logger: m => {
+              if (runId !== ocrRunId) return;
+              if (m && m.status) {
+                if (m.status === "loading tesseract core") {
+                  updateOcrProgress(25, "Cargando núcleo WASM local...");
+                } else if (m.status === "loading language traineddata") {
+                  const p = 30 + Math.round((m.progress || 0.1) * 35);
+                  updateOcrProgress(p, `Cargando diccionario local (${lang})...`);
+                } else if (m.status === "initializing api") {
+                  updateOcrProgress(68, "Configurando motor de caracteres...");
+                } else if (m.status === "recognizing text") {
+                  const p = 70 + Math.round((m.progress || 0) * 30);
+                  updateOcrProgress(p, `Extrayendo texto de la imagen... (${p}%)`);
                 }
               }
             }
-          );
+          });
+
+          if (runId !== ocrRunId) {
+            try { await worker.terminate(); } catch (e) {}
+            return;
+          }
+
+          activeTesseractWorker = worker;
+
+          const result = await worker.recognize(imageUrl);
+          if (runId !== ocrRunId) return;
 
           const recognizedText = (result && result.data && result.data.text) ? result.data.text.trim() : "";
 
@@ -3204,32 +3265,91 @@ function buildToolWorkspace(tool, container, footer) {
             }
             showToast("✓ Texto extraído exitosamente");
           } else {
-            outputText.value = "(No se detectó ningún texto claro en la imagen. Intenta con una imagen de mayor resolución o mejor iluminación)";
-            if (charCount) charCount.innerText = "0 caracteres";
+            // Mostrar como placeholder, no como valor
+            outputText.value = "";
+            outputText.placeholder = "No se detectó ningún texto claro en la imagen. Intenta con una imagen de mayor resolución o mejor iluminación.";
+            btnCopy.setAttribute("disabled", "true");
+            btnDownload.setAttribute("disabled", "true");
+            if (charCount) charCount.innerText = "0 caracteres | 0 palabras";
             showToast("No se detectó texto claro en la imagen");
           }
 
-          setTimeout(() => {
+          ocrProgressTimeout = setTimeout(() => {
             const progressWrap = document.getElementById("ocrProgressWrap");
             if (progressWrap) progressWrap.style.display = "none";
           }, 2500);
 
         } catch (err) {
+          if (runId !== ocrRunId) return;
           console.error("Error en Tesseract OCR:", err);
-          updateOcrProgress(100, "⚠️ Error durante el reconocimiento");
-          const barFill = document.getElementById("ocrBarFill");
-          if (barFill) barFill.style.backgroundColor = "#ea4335";
+
+          // Mensajes diferenciados según el tipo de fallo
+          const errStr = (err && err.message) ? err.message.toLowerCase() : "";
+          let userMsg = "Error desconocido al procesar el reconocimiento de texto.";
+          let toastMsg = "Error en OCR";
+
+          if (errStr.includes("network") || errStr.includes("fetch") || errStr.includes("traineddata") || errStr.includes("not found") || errStr.includes("loadlanguage")) {
+            userMsg = `No se pudieron cargar los modelos locales de idioma (${lang}) desde /ocr-assets.`;
+            toastMsg = "Modelos de idioma OCR no encontrados";
+          } else if (errStr.includes("image") || errStr.includes("read") || errStr.includes("decode") || errStr.includes("corrupt") || errStr.includes("format")) {
+            userMsg = "No se pudo leer la imagen seleccionada. El archivo podría estar dañado o tener un formato incompatible.";
+            toastMsg = "Imagen inválida o corrupta";
+          } else if (errStr.includes("worker") || errStr.includes("core") || errStr.includes("wasm")) {
+            userMsg = "Error al iniciar el núcleo WebAssembly local en /ocr-assets.";
+            toastMsg = "Error al iniciar núcleo OCR";
+          } else if (err && err.message) {
+            userMsg = `Ocurrió un error en el escaneo: ${err.message}`;
+            toastMsg = `Error OCR: ${err.message}`;
+          }
+
+          updateOcrProgress(100, "⚠️ " + toastMsg);
+          const barFillErr = document.getElementById("ocrBarFill");
+          if (barFillErr) barFillErr.style.backgroundColor = "#ea4335";
           outputText.value = "";
-          outputText.placeholder = "Ocurrió un error al procesar la imagen con OCR. Asegúrate de tener conexión para cargar los pesos del idioma.";
-          showToast("Error al procesar OCR. Verifica tu conexión.");
+          outputText.placeholder = userMsg;
+          showToast(toastMsg);
+        } finally {
+          if (runId === ocrRunId) {
+            if (langSelect) langSelect.removeAttribute("disabled");
+            if (btnChangeImg) btnChangeImg.removeAttribute("disabled");
+          }
         }
       }
 
-      window.copyOcrText = function() {
+      window.copyOcrText = async function() {
         const text = document.getElementById("ocrOutputText")?.value;
-        if (text) {
-          navigator.clipboard.writeText(text);
+        if (!text) {
+          showToast("No hay texto para copiar");
+          return;
+        }
+        let copied = false;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          try {
+            await navigator.clipboard.writeText(text);
+            copied = true;
+          } catch (e) {
+            copied = false;
+          }
+        }
+        if (!copied) {
+          try {
+            const tempTa = document.createElement("textarea");
+            tempTa.value = text;
+            tempTa.style.position = "fixed";
+            tempTa.style.opacity = "0";
+            tempTa.style.left = "-9999px";
+            document.body.appendChild(tempTa);
+            tempTa.select();
+            copied = document.execCommand("copy");
+            document.body.removeChild(tempTa);
+          } catch (e) {
+            copied = false;
+          }
+        }
+        if (copied) {
           showToast("Texto copiado al portapapeles");
+        } else {
+          showToast("No se pudo copiar automáticamente");
         }
       };
 
@@ -3237,40 +3357,70 @@ function buildToolWorkspace(tool, container, footer) {
         const text = document.getElementById("ocrOutputText")?.value;
         if (!text) return;
         const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+        const blobUrl = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.download = "texto-extraido-tooldrive.txt";
-        a.href = URL.createObjectURL(blob);
+        a.href = blobUrl;
         a.click();
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
         showToast("Archivo .txt descargado");
       };
 
       function handleOcrFile(file) {
         if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-          document.getElementById("ocrDropzone").style.display = "none";
-          document.getElementById("ocrResultWrap").style.display = "block";
-          document.getElementById("ocrPreviewImg").src = ev.target.result;
-          runOcrRecognition(ev.target.result);
-        };
-        reader.readAsDataURL(file);
+        if (!file.type || !file.type.startsWith("image/")) {
+          showToast("Selecciona un archivo de imagen válido (PNG, JPG, WebP, etc.)");
+          return;
+        }
+        revokeCurrentOcrObjectUrl();
+        currentOcrObjectUrl = URL.createObjectURL(file);
+
+        document.getElementById("ocrDropzone").style.display = "none";
+        document.getElementById("ocrResultWrap").style.display = "block";
+        document.getElementById("ocrPreviewImg").src = currentOcrObjectUrl;
+        runOcrRecognition(currentOcrObjectUrl);
       }
 
       const fileInput = document.getElementById("ocrFileInput");
       fileInput.addEventListener("change", (e) => {
-        handleOcrFile(e.target.files[0]);
+        const file = e.target.files && e.target.files[0];
+        fileInput.value = ""; // Resetear valor para permitir elegir el mismo archivo otra vez
+        if (file) handleOcrFile(file);
       });
 
       const langSelect = document.getElementById("ocrLangSelect");
       if (langSelect) {
         langSelect.addEventListener("change", () => {
-          if (currentOcrDataUrl) {
-            runOcrRecognition(currentOcrDataUrl);
+          if (currentOcrObjectUrl) {
+            runOcrRecognition(currentOcrObjectUrl);
           }
         });
       }
 
-      // Drag and Drop support
+      // Actualizar contador de palabras y caracteres en vivo al editar
+      const outputText = document.getElementById("ocrOutputText");
+      if (outputText) {
+        outputText.addEventListener("input", () => {
+          const val = outputText.value;
+          const words = val.trim() ? val.trim().split(/\s+/).length : 0;
+          const charCount = document.getElementById("ocrWordCharCount");
+          if (charCount) {
+            charCount.innerText = `${val.length} caracteres | ${words} palabras`;
+          }
+          const btnCopy = document.getElementById("btnCopyOcr");
+          const btnDownload = document.getElementById("btnDownloadTxt");
+          if (btnCopy) {
+            if (val.trim()) btnCopy.removeAttribute("disabled");
+            else btnCopy.setAttribute("disabled", "true");
+          }
+          if (btnDownload) {
+            if (val.trim()) btnDownload.removeAttribute("disabled");
+            else btnDownload.setAttribute("disabled", "true");
+          }
+        });
+      }
+
+      // Soporte Drag and Drop local en Dropzone
       const dropzone = document.getElementById("ocrDropzone");
       if (dropzone) {
         dropzone.addEventListener("dragover", (e) => {
@@ -3288,6 +3438,10 @@ function buildToolWorkspace(tool, container, footer) {
           }
         });
       }
+
+      // Evitar navegación al soltar fuera del dropzone dentro del contenedor
+      container.addEventListener("dragover", (e) => e.preventDefault());
+      container.addEventListener("drop", (e) => e.preventDefault());
 
       break;
     }
