@@ -2120,48 +2120,74 @@ function buildToolWorkspace(tool, container, footer) {
       container.innerHTML = `
         <div class="ui-control-group">
           <label class="ui-control-label">Ingresa la URL larga que deseas acortar:</label>
-          <input type="url" id="shortenerInput" class="ui-input" placeholder="https://ejemplo-muy-largo.com/pagina/categoria/articulo-2026?ref=tooldrive" value="https://google.com/search?q=herramientas+utiles+tooldrive">
+          <input type="url" id="shortenerInput" class="ui-input" placeholder="https://ejemplo-muy-largo.com/articulo?ref=tooldrive" value="https://google.com">
         </div>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-          <div class="ui-control-group">
-            <label class="ui-control-label">Dominio del enlace:</label>
-            <select id="shortenerDomain" class="ui-select">
-              <option value="tdrv.link" selected>tdrv.link (Predeterminado)</option>
-              <option value="drive.to">drive.to (Compacto)</option>
-              <option value="go.tools">go.tools (Rápido)</option>
-            </select>
-          </div>
-          <div class="ui-control-group">
-            <label class="ui-control-label">Alias personalizado (Opcional):</label>
-            <input type="text" id="shortenerAlias" class="ui-input" placeholder="mi-enlace">
-          </div>
+        <div style="font-size: 12px; color: var(--md-sys-color-on-surface-variant); margin-bottom: 14px;">
+          Genera un enlace corto real y permanente mediante la API pública de <strong>is.gd</strong> sin necesidad de registro.
         </div>
-        <div id="shortResultBox" style="display: none; padding: 16px; border-radius: 12px; background: #f0f4f9; border: 1px solid #d3e3fd; margin-top: 16px;">
-          <div style="font-size: 12px; font-weight: 600; color: #041e49; margin-bottom: 6px;">Tu enlace corto generado:</div>
-          <div style="display: flex; gap: 8px; align-items: center;">
-            <input type="text" id="shortResultUrl" class="ui-input" style="font-weight: 600; color: #0b57d0;" readonly>
-            <button class="ui-btn ui-btn-primary" onclick="navigator.clipboard.writeText(document.getElementById('shortResultUrl').value); showToast('Enlace corto copiado')">Copiar</button>
+
+        <div id="shortResultBox" style="display: none; padding: 16px; border-radius: 12px; background: var(--md-sys-color-surface-variant); border: 1px solid var(--md-sys-color-outline-variant); margin-top: 14px;">
+          <div style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">Enlace corto real generado:</div>
+          <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 14px;">
+            <input type="text" id="shortResultUrl" class="ui-input" style="font-weight: 600; color: var(--md-sys-color-primary);" readonly>
+            <button class="ui-btn ui-btn-primary" onclick="navigator.clipboard.writeText(document.getElementById('shortResultUrl').value); showToast('Enlace copiado')">Copiar</button>
+            <a id="shortResultVisitLink" href="#" target="_blank" class="ui-btn ui-btn-outlined" style="text-decoration: none; display: inline-flex; align-items: center;">Abrir</a>
+          </div>
+          <div style="display: flex; align-items: center; gap: 14px; background: var(--md-sys-color-surface); padding: 12px; border-radius: 8px; border: 1px solid var(--md-sys-color-outline-variant);">
+            <canvas id="shortenerQrCanvas" style="width: 80px; height: 80px; border-radius: 4px;"></canvas>
+            <div style="font-size: 12px;">
+              <div style="font-weight: 600;">Código QR complementario</div>
+              <div style="color: var(--md-sys-color-on-surface-variant);">Escanea este QR para redirigirte al enlace corto en tu móvil.</div>
+            </div>
           </div>
         </div>
       `;
 
       footer.innerHTML = `
-        <button class="ui-btn ui-btn-primary" onclick="generateShortUrl()">Acortar Enlace</button>
+        <button class="ui-btn ui-btn-outlined" onclick="closeToolModal()">Cerrar</button>
+        <button id="btnShortenSubmit" class="ui-btn ui-btn-primary" onclick="generateShortUrl()">Acortar Enlace Real</button>
       `;
 
-      window.generateShortUrl = function() {
+      window.generateShortUrl = async function() {
         const longUrl = document.getElementById("shortenerInput").value.trim();
-        if (!longUrl) {
-          showToast("Ingresa un enlace válido");
+        if (!longUrl || !longUrl.match(/^https?:\/\//i)) {
+          showToast("Ingresa una URL completa válida (iniciando con http:// o https://)");
           return;
         }
-        const domain = document.getElementById("shortenerDomain").value;
-        const alias = document.getElementById("shortenerAlias").value.trim() || Math.random().toString(36).substring(2, 7);
-        const shortUrl = `https://${domain}/${alias}`;
 
-        document.getElementById("shortResultUrl").value = shortUrl;
-        document.getElementById("shortResultBox").style.display = "block";
-        showToast("¡Enlace generado!");
+        const btn = document.getElementById("btnShortenSubmit");
+        if (btn) {
+          btn.setAttribute("disabled", "true");
+          btn.innerText = "Acortando...";
+        }
+        showToast("Generando enlace corto en is.gd...");
+
+        try {
+          const resp = await fetch(`https://is.gd/create.php?format=json&url=${encodeURIComponent(longUrl)}`);
+          const data = await resp.json();
+          if (data && data.shorturl) {
+            document.getElementById("shortResultUrl").value = data.shorturl;
+            document.getElementById("shortResultVisitLink").href = data.shorturl;
+            document.getElementById("shortResultBox").style.display = "block";
+
+            // Render QR code
+            const canvas = document.getElementById("shortenerQrCanvas");
+            if (canvas && window.generateQRCodeToCanvas) {
+              window.generateQRCodeToCanvas(canvas, data.shorturl, { size: 160 });
+            }
+
+            showToast("✓ Enlace acortado real creado con éxito");
+          } else {
+            showToast("Error al acortar: " + (data.errormessage || "Verifica la URL"));
+          }
+        } catch (e) {
+          showToast("No se pudo conectar con el servicio. Comprueba tu conexión.");
+        } finally {
+          if (btn) {
+            btn.removeAttribute("disabled");
+            btn.innerText = "Acortar Enlace Real";
+          }
+        }
       };
       break;
     }
@@ -2169,35 +2195,57 @@ function buildToolWorkspace(tool, container, footer) {
     // ---------------- SIGN PDF (FIRMAR DOCUMENTOS) ----------------
     case "sign-pdf": {
       container.innerHTML = `
-        <div style="margin-bottom: 14px;">
-          <label class="ui-control-label">Dibuja tu firma digital con el ratón o pantalla táctil:</label>
-          <div style="display: flex; gap: 10px; margin-bottom: 8px; align-items: center;">
-            <span style="font-size: 13px;">Color del bolígrafo:</span>
-            <button class="icon-btn" style="background: #000; width: 24px; height: 24px;" onclick="setPenColor('#000000')"></button>
-            <button class="icon-btn" style="background: #0b57d0; width: 24px; height: 24px;" onclick="setPenColor('#0b57d0')"></button>
-            <button class="icon-btn" style="background: #ea4335; width: 24px; height: 24px;" onclick="setPenColor('#ea4335')"></button>
-            <button class="ui-btn ui-btn-outlined" style="margin-left: auto; height: 32px; font-size: 12px;" onclick="clearSignature()">Borrar firma</button>
+        <div style="display: grid; grid-template-columns: 1fr; gap: 14px;">
+          <div>
+            <label class="ui-control-label">1. Dibuja tu firma digital con ratón o pantalla táctil:</label>
+            <div style="display: flex; gap: 10px; margin-bottom: 8px; align-items: center;">
+              <span style="font-size: 13px;">Color:</span>
+              <button class="icon-btn" style="background: #000; width: 24px; height: 24px; border-radius: 50%;" onclick="setPenColor('#000000')" title="Negro"></button>
+              <button class="icon-btn" style="background: #0b57d0; width: 24px; height: 24px; border-radius: 50%;" onclick="setPenColor('#0b57d0')" title="Azul"></button>
+              <button class="icon-btn" style="background: #ea4335; width: 24px; height: 24px; border-radius: 50%;" onclick="setPenColor('#ea4335')" title="Rojo"></button>
+              <button class="ui-btn ui-btn-outlined" style="margin-left: auto; height: 30px; font-size: 12px; padding: 4px 10px;" onclick="clearSignature()">Borrar trazo</button>
+            </div>
+            <div style="border: 1px dashed var(--md-sys-color-outline-variant); border-radius: 12px; background: var(--md-sys-color-surface); padding: 4px;">
+              <canvas id="signPadCanvas" class="signature-canvas" style="width: 100%; height: 160px; display: block;"></canvas>
+            </div>
           </div>
-          <canvas id="signPadCanvas" class="signature-canvas"></canvas>
-        </div>
-        <div style="background: #f8fafd; border-radius: 12px; padding: 14px; border: 1px solid #e1e3e1;">
-          <div style="font-size: 13px; font-weight: 600; margin-bottom: 4px;">Modo de exportación:</div>
-          <div style="font-size: 12px; color: #444746;">Puedes descargar tu firma en formato PNG transparente para estampar en cualquier PDF o documento oficial de Word.</div>
+
+          <div style="background: var(--md-sys-color-surface-variant); border-radius: 12px; padding: 14px; border: 1px solid var(--md-sys-color-outline-variant);">
+            <div style="font-size: 13px; font-weight: 600; margin-bottom: 6px;">2. Documento PDF a firmar (Opcional):</div>
+            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+              <input type="file" id="signPdfFileInput" accept=".pdf" style="display: none;" />
+              <button class="ui-btn ui-btn-outlined" onclick="document.getElementById('signPdfFileInput').click()" style="font-size: 12px;">
+                📄 Cargar archivo PDF
+              </button>
+              <span id="signPdfFileInfo" style="font-size: 12px; color: var(--md-sys-color-on-surface-variant);">Ningún PDF seleccionado (se descargará solo la firma PNG)</span>
+            </div>
+            <div id="signPageChoiceWrap" style="display: none; margin-top: 10px; font-size: 12px;">
+              <label class="ui-control-label" style="font-size: 12px; margin-bottom: 4px;">Estampar firma en:</label>
+              <select id="signPageChoice" class="ui-select" style="max-width: 240px; padding: 4px 8px; font-size: 12px;">
+                <option value="last" selected>Última página (Recomendado)</option>
+                <option value="first">Primera página</option>
+                <option value="all">Todas las páginas</option>
+              </select>
+            </div>
+          </div>
         </div>
       `;
 
       footer.innerHTML = `
-        <button class="ui-btn ui-btn-outlined" onclick="closeToolModal()">Cancelar</button>
-        <button class="ui-btn ui-btn-primary" onclick="downloadSignature()">Descargar Firma (PNG Transparente)</button>
+        <button class="ui-btn ui-btn-outlined" onclick="closeToolModal()">Cerrar</button>
+        <button class="ui-btn ui-btn-outlined" onclick="downloadSignature()">Descargar PNG Transparente</button>
+        <button id="btnSignPdfDirect" class="ui-btn ui-btn-primary" disabled onclick="applySignatureToPdf()">Firmar y Descargar PDF</button>
       `;
 
       const canvas = document.getElementById("signPadCanvas");
       const ctx = canvas.getContext("2d");
-      canvas.width = canvas.parentElement.clientWidth || 600;
-      canvas.height = 200;
+      canvas.width = canvas.parentElement.clientWidth || 550;
+      canvas.height = 160;
 
       let isDrawing = false;
+      let hasDrawn = false;
       let penColor = "#000000";
+      let loadedPdfToSign = null;
 
       ctx.lineWidth = 2.5;
       ctx.lineCap = "round";
@@ -2216,6 +2264,8 @@ function buildToolWorkspace(tool, container, footer) {
 
       function startDraw(e) {
         isDrawing = true;
+        hasDrawn = true;
+        checkSignPdfReady();
         const pos = getPos(e);
         ctx.beginPath();
         ctx.moveTo(pos.x, pos.y);
@@ -2230,9 +2280,7 @@ function buildToolWorkspace(tool, container, footer) {
         e.preventDefault();
       }
 
-      function stopDraw() {
-        isDrawing = false;
-      }
+      function stopDraw() { isDrawing = false; }
 
       canvas.addEventListener("mousedown", startDraw);
       canvas.addEventListener("mousemove", draw);
@@ -2250,14 +2298,107 @@ function buildToolWorkspace(tool, container, footer) {
 
       window.clearSignature = function() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
+        hasDrawn = false;
+        checkSignPdfReady();
       };
 
+      function checkSignPdfReady() {
+        const btn = document.getElementById("btnSignPdfDirect");
+        if (btn) {
+          if (loadedPdfToSign && hasDrawn) {
+            btn.removeAttribute("disabled");
+          } else {
+            btn.setAttribute("disabled", "true");
+          }
+        }
+      }
+
+      const pdfInput = document.getElementById("signPdfFileInput");
+      pdfInput.addEventListener("change", (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        loadedPdfToSign = file;
+        document.getElementById("signPdfFileInfo").innerHTML = `✓ <strong>${file.name}</strong> (${(file.size / 1024).toFixed(1)} KB)`;
+        document.getElementById("signPageChoiceWrap").style.display = "block";
+        checkSignPdfReady();
+        showToast("PDF cargado listo para firmar");
+      });
+
       window.downloadSignature = function() {
+        if (!hasDrawn) {
+          showToast("Dibuja tu firma en el recuadro primero");
+          return;
+        }
         const a = document.createElement("a");
         a.download = "mi-firma-digital.png";
         a.href = canvas.toDataURL("image/png");
         a.click();
-        showToast("Firma descargada en alta resolución");
+        showToast("Firma PNG descargada");
+      };
+
+      window.applySignatureToPdf = async function() {
+        if (!loadedPdfToSign) {
+          showToast("Carga un archivo PDF para firmar");
+          return;
+        }
+        if (!hasDrawn) {
+          showToast("Dibuja tu firma en el recuadro");
+          return;
+        }
+        if (typeof PDFLib === "undefined") {
+          showToast("Cargando motor PDF...");
+          return;
+        }
+
+        const btn = document.getElementById("btnSignPdfDirect");
+        btn.setAttribute("disabled", "true");
+        btn.innerText = "Estampando firma...";
+
+        try {
+          const pdfBytes = await loadedPdfToSign.arrayBuffer();
+          const pdfDoc = await PDFLib.PDFDocument.load(pdfBytes);
+          const pngDataUrl = canvas.toDataURL("image/png");
+          const pngBytes = await fetch(pngDataUrl).then(r => r.arrayBuffer());
+          const signatureImage = await pdfDoc.embedPng(pngBytes);
+
+          const pages = pdfDoc.getPages();
+          const choice = document.getElementById("signPageChoice")?.value || "last";
+
+          let targetPages = [];
+          if (choice === "first") targetPages = [pages[0]];
+          else if (choice === "all") targetPages = pages;
+          else targetPages = [pages[pages.length - 1]];
+
+          const sigW = 150;
+          const sigH = (sigW / canvas.width) * canvas.height;
+
+          targetPages.forEach(p => {
+            const { width, height } = p.getSize();
+            p.drawImage(signatureImage, {
+              x: width - sigW - 40,
+              y: 45,
+              width: sigW,
+              height: sigH
+            });
+          });
+
+          const signedBytes = await pdfDoc.save();
+          const blob = new Blob([signedBytes], { type: "application/pdf" });
+          const a = document.createElement("a");
+          const baseName = loadedPdfToSign.name.replace(/\.[^/.]+$/, "");
+          a.download = `${baseName}-firmado.pdf`;
+          a.href = URL.createObjectURL(blob);
+          a.click();
+
+          showToast("✓ ¡Documento PDF firmado y descargado!");
+          closeToolModal();
+        } catch (err) {
+          console.error("Error al firmar PDF:", err);
+          showToast("Error al estampar firma en el PDF");
+        } finally {
+          btn.removeAttribute("disabled");
+          btn.innerText = "Firmar y Descargar PDF";
+        }
       };
       break;
     }
@@ -2321,10 +2462,16 @@ function buildToolWorkspace(tool, container, footer) {
 
               ${isRemoveBg ? `
                 <div class="ui-control-group">
-                  <label class="ui-control-label">Tolerancia de fondo (%):</label>
+                  <label class="ui-control-label">Tolerancia de fondo (Chroma Key):</label>
                   <input type="range" id="bgTolerance" class="ui-slider" min="10" max="90" value="30">
                 </div>
-                <div style="font-size: 12px; color: #444746;">Detección de silueta y aislamiento con fondo transparente PNG.</div>
+                <div style="font-size: 12px; color: #444746;">Eliminación de fondo uniforme o monocromático (toma de referencia la esquina superior izquierda).</div>
+              ` : ''}
+
+              ${tool.id === "heic-to-jpg" ? `
+                <div style="font-size: 12px; color: var(--md-sys-color-on-surface-variant); background: var(--md-sys-color-surface-variant); padding: 8px 12px; border-radius: 8px; margin-bottom: 10px; border: 1px solid var(--md-sys-color-outline-variant);">
+                  ℹ️ Compatible de forma nativa en navegadores con códec HEIC (Safari iOS/macOS).
+                </div>
               ` : ''}
 
               ${isUpscale ? `
@@ -2374,6 +2521,7 @@ function buildToolWorkspace(tool, container, footer) {
       function handleFile(file) {
         if (!file) return;
         originalFileName = file.name.replace(/\.[^/.]+$/, "");
+        const isHeic = file.name.toLowerCase().endsWith(".heic") || (file.type && file.type.includes("heic"));
         const reader = new FileReader();
         reader.onload = (e) => {
           const img = new Image();
@@ -2388,6 +2536,13 @@ function buildToolWorkspace(tool, container, footer) {
             if (isResize) {
               document.getElementById("resizeWidth").value = img.width;
               document.getElementById("resizeHeight").value = img.height;
+            }
+          };
+          img.onerror = () => {
+            if (isHeic) {
+              showToast("Tu navegador actual no soporta decodificación nativa de HEIC (compatible con Safari)");
+            } else {
+              showToast("No se pudo cargar la imagen seleccionada");
             }
           };
           img.src = e.target.result;
@@ -2468,156 +2623,372 @@ function buildToolWorkspace(tool, container, footer) {
       break;
     }
 
-    // ---------------- PDF TOOLS (MERGE, SPLIT, COMPRESS, DOC TO PDF, UNLOCK, PDF TO JPEG) ----------------
-    case "doc-to-pdf":
-    case "merge-pdf":
-    case "split-pdf":
-    case "compress-pdf":
-    case "pdf-to-jpeg":
-    case "unlock-pdf": {
-      const isMerge = tool.id === "merge-pdf";
-      const isSplit = tool.id === "split-pdf";
-      const isCompress = tool.id === "compress-pdf";
-      const isUnlock = tool.id === "unlock-pdf";
-      const isPdfToJpeg = tool.id === "pdf-to-jpeg";
-
+    // ---------------- REAL PDF MERGE ----------------
+    case "merge-pdf": {
       container.innerHTML = `
-        <div class="ui-dropzone" id="pdfDropzone" onclick="document.getElementById('pdfFileInput').click()">
-          <input type="file" id="pdfFileInput" style="display: none;" ${isMerge ? 'multiple' : ''} accept=".pdf,.doc,.docx">
+        <div class="ui-dropzone" id="pdfMergeDropzone" onclick="document.getElementById('pdfMergeFileInput').click()">
+          <input type="file" id="pdfMergeFileInput" style="display: none;" multiple accept=".pdf">
           <div class="ui-dropzone-icon">${ICONS.pdf}</div>
-          <div class="ui-dropzone-title">Selecciona tus archivos ${isMerge ? '(puedes elegir varios)' : ''}</div>
-          <div class="ui-dropzone-sub">Procesamiento seguro directo en tu navegador</div>
+          <div class="ui-dropzone-title">Selecciona los archivos PDF a unir</div>
+          <div class="ui-dropzone-sub">Elige 2 o más documentos PDF (procesamiento 100% local y seguro)</div>
         </div>
 
-        <div id="pdfQueueSection" style="display: none;">
-          <div style="font-size: 13px; font-weight: 600; margin-bottom: 8px;">Archivos seleccionados:</div>
-          <div id="pdfFileList" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px;"></div>
+        <div id="pdfMergeQueueSection" style="display: none;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <div style="font-size: 13px; font-weight: 600;">Documentos seleccionados en orden de unión:</div>
+            <button class="ui-btn ui-btn-outlined" style="font-size: 12px; padding: 4px 10px;" onclick="document.getElementById('pdfMergeFileInput').click()">
+              + Añadir más PDFs
+            </button>
+          </div>
+          <div id="pdfMergeFileList" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; max-height: 240px; overflow-y: auto;"></div>
 
-          ${isSplit ? `
-            <div class="ui-control-group">
-              <label class="ui-control-label">Rango de páginas a extraer:</label>
-              <input type="text" id="splitPagesInput" class="ui-input" placeholder="Ejemplo: 1-3, 5, 8" value="1-3">
-            </div>
-          ` : ''}
-
-          ${isCompress ? `
-            <div class="ui-control-group">
-              <label class="ui-control-label">Nivel de compresión deseado:</label>
-              <select id="compressLevelSelect" class="ui-select">
-                <option value="high">Compresión Extrema (Menor tamaño posible)</option>
-                <option value="medium" selected>Compresión Recomendada (Alta calidad y reducción del 60%)</option>
-                <option value="low">Compresión Baja (Máxima fidelidad visual)</option>
-              </select>
-            </div>
-          ` : ''}
-
-          ${isUnlock ? `
-            <div class="ui-control-group">
-              <label class="ui-control-label">Contraseña de apertura (si la posee):</label>
-              <input type="password" id="unlockPassInput" class="ui-input" placeholder="Ingresa contraseña o déjalo vacío si solo tiene permisos restringidos">
-            </div>
-          ` : ''}
-
-          <div id="pdfProgressWrap" style="display: none; margin-top: 14px;">
+          <div id="pdfMergeProgressWrap" style="display: none; margin-top: 14px;">
             <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px;">
-              <span>Procesando documento...</span>
-              <span id="pdfPercent">0%</span>
+              <span id="pdfMergeStatusText">Uniendo documentos...</span>
+              <span id="pdfMergePercent">0%</span>
             </div>
-            <div class="storage-bar-bg"><div id="pdfBarFill" class="storage-bar-fill" style="width: 0%;"></div></div>
+            <div class="storage-bar-bg"><div id="pdfMergeBarFill" class="storage-bar-fill" style="width: 0%;"></div></div>
           </div>
         </div>
       `;
 
       footer.innerHTML = `
         <button class="ui-btn ui-btn-outlined" onclick="closeToolModal()">Cancelar</button>
-        <button id="btnExecutePdf" class="ui-btn ui-btn-primary" disabled onclick="executePdfAction('${tool.id}')">
-          ${isMerge ? 'Unir Documentos' : isSplit ? 'Dividir y Descargar' : isCompress ? 'Comprimir PDF' : isUnlock ? 'Desbloquear PDF' : isPdfToJpeg ? 'Extraer Imágenes' : 'Convertir Documento'}
-        </button>
+        <button id="btnExecuteMergePdf" class="ui-btn ui-btn-primary" disabled onclick="executeMergePdf()">Unir Documentos</button>
       `;
 
-      let selectedPdfFiles = [];
-      const fileInput = document.getElementById("pdfFileInput");
-      const queueSection = document.getElementById("pdfQueueSection");
-      const fileList = document.getElementById("pdfFileList");
-      const btnExec = document.getElementById("btnExecutePdf");
+      let selectedMergeFiles = [];
+      const fileInput = document.getElementById("pdfMergeFileInput");
+      const dropzone = document.getElementById("pdfMergeDropzone");
+      const queueSection = document.getElementById("pdfMergeQueueSection");
+      const fileList = document.getElementById("pdfMergeFileList");
+      const btnExec = document.getElementById("btnExecuteMergePdf");
 
-      function updateQueue(files) {
-        selectedPdfFiles = Array.from(files);
-        if (selectedPdfFiles.length === 0) return;
+      function updateMergeQueue(files) {
+        for (let f of files) {
+          if (f.name.toLowerCase().endsWith(".pdf") || f.type === "application/pdf") {
+            selectedMergeFiles.push(f);
+          }
+        }
+        if (selectedMergeFiles.length === 0) return;
 
-        document.getElementById("pdfDropzone").style.display = "none";
+        dropzone.style.display = "none";
         queueSection.style.display = "block";
-        btnExec.removeAttribute("disabled");
 
-        fileList.innerHTML = selectedPdfFiles.map((f, i) => `
-          <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: #f8fafd; border-radius: 8px; border: 1px solid #e1e3e1; font-size: 13px;">
+        if (selectedMergeFiles.length >= 2) {
+          btnExec.removeAttribute("disabled");
+        } else {
+          btnExec.setAttribute("disabled", "true");
+        }
+
+        renderMergeFileList();
+      }
+
+      function renderMergeFileList() {
+        fileList.innerHTML = selectedMergeFiles.map((f, i) => `
+          <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: var(--md-sys-color-surface-variant); border-radius: 8px; border: 1px solid var(--md-sys-color-outline-variant); font-size: 13px;">
             <div style="display: flex; align-items: center; gap: 10px;">
+              <span style="font-weight: 600; color: var(--md-sys-color-primary);">${i + 1}.</span>
               <span>${ICONS.pdf}</span>
               <div>
                 <strong>${f.name}</strong>
-                <div style="font-size: 11px; color: #747775;">${(f.size / 1024).toFixed(1)} KB</div>
+                <div style="font-size: 11px; color: var(--md-sys-color-on-surface-variant);">${(f.size / 1024).toFixed(1)} KB</div>
               </div>
             </div>
-            <span style="font-size: 12px; color: #34a853; font-weight: 500;">✓ Listo</span>
+            <button class="ui-btn ui-btn-outlined" style="padding: 2px 8px; font-size: 11px; color: #ba1a1a;" onclick="removeMergeFile(${i})">Quitar</button>
           </div>
         `).join("");
       }
 
-      fileInput.addEventListener("change", (e) => updateQueue(e.target.files));
+      window.removeMergeFile = function(index) {
+        selectedMergeFiles.splice(index, 1);
+        if (selectedMergeFiles.length === 0) {
+          dropzone.style.display = "block";
+          queueSection.style.display = "none";
+          btnExec.setAttribute("disabled", "true");
+        } else {
+          if (selectedMergeFiles.length < 2) {
+            btnExec.setAttribute("disabled", "true");
+          }
+          renderMergeFileList();
+        }
+      };
 
-      window.executePdfAction = function(actionId) {
-        const progressWrap = document.getElementById("pdfProgressWrap");
-        const barFill = document.getElementById("pdfBarFill");
-        const percentText = document.getElementById("pdfPercent");
+      fileInput.addEventListener("change", (e) => updateMergeQueue(e.target.files));
+
+      dropzone.addEventListener("dragover", (e) => { e.preventDefault(); dropzone.classList.add("dragover"); });
+      dropzone.addEventListener("dragleave", () => dropzone.classList.remove("dragover"));
+      dropzone.addEventListener("drop", (e) => {
+        e.preventDefault();
+        dropzone.classList.remove("dragover");
+        if (e.dataTransfer.files.length) updateMergeQueue(e.dataTransfer.files);
+      });
+
+      window.executeMergePdf = async function() {
+        if (selectedMergeFiles.length < 2) {
+          showToast("Añade al menos 2 archivos PDF para unir");
+          return;
+        }
+        if (typeof PDFLib === "undefined") {
+          showToast("Cargando motor PDF...");
+          return;
+        }
+
+        const progressWrap = document.getElementById("pdfMergeProgressWrap");
+        const barFill = document.getElementById("pdfMergeBarFill");
+        const percentText = document.getElementById("pdfMergePercent");
+        const statusText = document.getElementById("pdfMergeStatusText");
 
         progressWrap.style.display = "block";
         btnExec.setAttribute("disabled", "true");
+        btnExec.innerText = "Uniendo...";
 
-        let p = 0;
-        const interval = setInterval(() => {
-          p += 15;
-          if (p > 100) p = 100;
-          barFill.style.width = `${p}%`;
-          percentText.innerText = `${p}%`;
+        try {
+          const mergedPdf = await PDFLib.PDFDocument.create();
+          for (let i = 0; i < selectedMergeFiles.length; i++) {
+            const f = selectedMergeFiles[i];
+            statusText.innerText = `Cargando ${f.name}...`;
+            const percent = Math.round(((i) / selectedMergeFiles.length) * 80);
+            barFill.style.width = `${percent}%`;
+            percentText.innerText = `${percent}%`;
 
-          if (p >= 100) {
-            clearInterval(interval);
-            setTimeout(() => {
-              // Trigger client side download
-              const primaryName = selectedPdfFiles[0] ? selectedPdfFiles[0].name.replace(/\.[^/.]+$/, "") : "documento";
-              let outName = `${primaryName}-procesado.pdf`;
-              let mime = "application/pdf";
-              if (actionId === "pdf-to-jpeg") {
-                outName = `${primaryName}-paginas.jpg`;
-                mime = "image/jpeg";
-              }
-
-              // Create clean blob output
-              const sampleBlob = new Blob([selectedPdfFiles[0] || "Contenido de documento procesado por ToolDrive"], { type: mime });
-              const a = document.createElement("a");
-              a.download = outName;
-              a.href = URL.createObjectURL(sampleBlob);
-              a.click();
-
-              showToast("¡Documento procesado y descargado exitosamente!");
-              closeToolModal();
-            }, 400);
+            const bytes = await f.arrayBuffer();
+            const doc = await PDFLib.PDFDocument.load(bytes);
+            const copiedPages = await mergedPdf.copyPages(doc, doc.getPageIndices());
+            copiedPages.forEach((page) => mergedPdf.addPage(page));
           }
-        }, 120);
+
+          statusText.innerText = "Generando PDF final combinado...";
+          barFill.style.width = "90%";
+          percentText.innerText = "90%";
+
+          const mergedBytes = await mergedPdf.save();
+          const blob = new Blob([mergedBytes], { type: "application/pdf" });
+          const a = document.createElement("a");
+          a.download = "documentos-unidos-tooldrive.pdf";
+          a.href = URL.createObjectURL(blob);
+          a.click();
+
+          barFill.style.width = "100%";
+          percentText.innerText = "100%";
+          showToast(`✓ ¡${selectedMergeFiles.length} documentos unidos exitosamente!`);
+          setTimeout(() => closeToolModal(), 600);
+        } catch (err) {
+          console.error("Error al unir PDFs:", err);
+          showToast("Error al procesar los documentos PDF. Verifica que no tengan contraseñas.");
+          btnExec.removeAttribute("disabled");
+          btnExec.innerText = "Unir Documentos";
+        }
       };
       break;
     }
 
-    // ---------------- AUDIO & VIDEO TOOLS ----------------
+    // ---------------- REAL PDF SPLIT ----------------
+    case "split-pdf": {
+      container.innerHTML = `
+        <div class="ui-dropzone" id="pdfSplitDropzone" onclick="document.getElementById('pdfSplitFileInput').click()">
+          <input type="file" id="pdfSplitFileInput" style="display: none;" accept=".pdf">
+          <div class="ui-dropzone-icon">${ICONS.pdf}</div>
+          <div class="ui-dropzone-title">Selecciona el documento PDF a dividir</div>
+          <div class="ui-dropzone-sub">Extrae páginas individuales o rangos específicos (procesamiento 100% local)</div>
+        </div>
+
+        <div id="pdfSplitWorkArea" style="display: none;">
+          <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; background: var(--md-sys-color-surface-variant); border-radius: 8px; border: 1px solid var(--md-sys-color-outline-variant); margin-bottom: 16px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span>${ICONS.pdf}</span>
+              <div>
+                <strong id="pdfSplitFileName">-</strong>
+                <div id="pdfSplitFileInfo" style="font-size: 11px; color: var(--md-sys-color-on-surface-variant);">-</div>
+              </div>
+            </div>
+            <button class="ui-btn ui-btn-outlined" style="font-size: 11px; padding: 3px 8px;" onclick="document.getElementById('pdfSplitFileInput').click()">Cambiar archivo</button>
+          </div>
+
+          <div class="ui-control-group">
+            <label class="ui-control-label">Rango de páginas a extraer:</label>
+            <input type="text" id="splitPagesInput" class="ui-input" placeholder="Ejemplo: 1-3, 5" value="1">
+            <div id="pdfSplitHint" style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); margin-top: 4px;">Indica las páginas separadas por comas o rangos con guión (ej: 1-2, 4).</div>
+          </div>
+
+          <div id="pdfSplitProgressWrap" style="display: none; margin-top: 14px;">
+            <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px;">
+              <span>Extrayendo páginas seleccionadas...</span>
+              <span id="pdfSplitPercent">0%</span>
+            </div>
+            <div class="storage-bar-bg"><div id="pdfSplitBarFill" class="storage-bar-fill" style="width: 0%;"></div></div>
+          </div>
+        </div>
+      `;
+
+      footer.innerHTML = `
+        <button class="ui-btn ui-btn-outlined" onclick="closeToolModal()">Cancelar</button>
+        <button id="btnExecuteSplitPdf" class="ui-btn ui-btn-primary" disabled onclick="executeSplitPdf()">Dividir y Descargar</button>
+      `;
+
+      let loadedSplitFile = null;
+      let totalDocPages = 1;
+      const fileInput = document.getElementById("pdfSplitFileInput");
+      const dropzone = document.getElementById("pdfSplitDropzone");
+      const workArea = document.getElementById("pdfSplitWorkArea");
+      const btnExec = document.getElementById("btnExecuteSplitPdf");
+
+      async function handleSplitFile(file) {
+        if (!file) return;
+        if (typeof PDFLib === "undefined") {
+          showToast("Cargando motor PDF...");
+          return;
+        }
+
+        try {
+          const bytes = await file.arrayBuffer();
+          const doc = await PDFLib.PDFDocument.load(bytes);
+          totalDocPages = doc.getPageCount();
+          loadedSplitFile = file;
+
+          dropzone.style.display = "none";
+          workArea.style.display = "block";
+          document.getElementById("pdfSplitFileName").innerText = file.name;
+          document.getElementById("pdfSplitFileInfo").innerText = `${totalDocPages} páginas en total • ${(file.size / 1024).toFixed(1)} KB`;
+          document.getElementById("pdfSplitHint").innerText = `Total de páginas: ${totalDocPages}. Puedes indicar rangos como: 1-${Math.min(3, totalDocPages)} o páginas sueltas como: 1, ${totalDocPages}`;
+          document.getElementById("splitPagesInput").value = totalDocPages > 1 ? `1-${Math.min(2, totalDocPages)}` : "1";
+          btnExec.removeAttribute("disabled");
+          showToast(`PDF cargado con éxito (${totalDocPages} páginas)`);
+        } catch (err) {
+          console.error("Error al cargar PDF:", err);
+          showToast("Error al abrir el PDF. Comprueba que sea un archivo válido.");
+        }
+      }
+
+      fileInput.addEventListener("change", (e) => handleSplitFile(e.target.files[0]));
+
+      dropzone.addEventListener("dragover", (e) => { e.preventDefault(); dropzone.classList.add("dragover"); });
+      dropzone.addEventListener("dragleave", () => dropzone.classList.remove("dragover"));
+      dropzone.addEventListener("drop", (e) => {
+        e.preventDefault();
+        dropzone.classList.remove("dragover");
+        if (e.dataTransfer.files.length) handleSplitFile(e.dataTransfer.files[0]);
+      });
+
+      function parsePdfRanges(rangeStr, maxPages) {
+        const set = new Set();
+        const parts = rangeStr.split(",");
+        for (let p of parts) {
+          p = p.trim();
+          if (!p) continue;
+          if (p.includes("-")) {
+            const [startStr, endStr] = p.split("-");
+            const start = parseInt(startStr, 10);
+            const end = parseInt(endStr, 10);
+            if (!isNaN(start) && !isNaN(end)) {
+              const from = Math.max(1, Math.min(start, end));
+              const to = Math.min(maxPages, Math.max(start, end));
+              for (let i = from; i <= to; i++) {
+                set.add(i - 1);
+              }
+            }
+          } else {
+            const num = parseInt(p, 10);
+            if (!isNaN(num) && num >= 1 && num <= maxPages) {
+              set.add(num - 1);
+            }
+          }
+        }
+        return Array.from(set).sort((a, b) => a - b);
+      }
+
+      window.executeSplitPdf = async function() {
+        if (!loadedSplitFile) return;
+        const rangeStr = document.getElementById("splitPagesInput").value;
+        const pageIndices = parsePdfRanges(rangeStr, totalDocPages);
+
+        if (pageIndices.length === 0) {
+          showToast(`Ingresa páginas válidas entre 1 y ${totalDocPages}`);
+          return;
+        }
+
+        const progressWrap = document.getElementById("pdfSplitProgressWrap");
+        const barFill = document.getElementById("pdfSplitBarFill");
+        const percentText = document.getElementById("pdfSplitPercent");
+
+        progressWrap.style.display = "block";
+        btnExec.setAttribute("disabled", "true");
+        barFill.style.width = "40%";
+        percentText.innerText = "40%";
+
+        try {
+          const bytes = await loadedSplitFile.arrayBuffer();
+          const srcDoc = await PDFLib.PDFDocument.load(bytes);
+          const newDoc = await PDFLib.PDFDocument.create();
+
+          barFill.style.width = "70%";
+          percentText.innerText = "70%";
+
+          const copiedPages = await newDoc.copyPages(srcDoc, pageIndices);
+          copiedPages.forEach((p) => newDoc.addPage(p));
+
+          const splitBytes = await newDoc.save();
+          const blob = new Blob([splitBytes], { type: "application/pdf" });
+          const a = document.createElement("a");
+          const baseName = loadedSplitFile.name.replace(/\.[^/.]+$/, "");
+          a.download = `${baseName}-extraido.pdf`;
+          a.href = URL.createObjectURL(blob);
+          a.click();
+
+          barFill.style.width = "100%";
+          percentText.innerText = "100%";
+          showToast(`✓ ¡${pageIndices.length} página(s) extraída(s) exitosamente!`);
+          setTimeout(() => closeToolModal(), 600);
+        } catch (err) {
+          console.error("Error al dividir PDF:", err);
+          showToast("Error al extraer páginas del documento");
+          btnExec.removeAttribute("disabled");
+        }
+      };
+      break;
+    }
+
+    // ---------------- PDF TOOLS EN DESARROLLO (DOC TO PDF, COMPRESS, UNLOCK, PDF TO JPEG) ----------------
+    case "doc-to-pdf":
+    case "compress-pdf":
+    case "pdf-to-jpeg":
+    case "unlock-pdf": {
+      let explanation = "";
+      if (tool.id === "doc-to-pdf") {
+        explanation = "La conversión directa de archivos Word (.doc/.docx) a PDF requiere un motor de maquetación avanzada que actualmente se encuentra en desarrollo para ejecutarse 100% en el cliente sin servidores externos.";
+      } else if (tool.id === "compress-pdf") {
+        explanation = "La compresión avanzada con remuestreo de flujos de imágenes internas en PDF requiere un módulo especializado en WebAssembly que se integrará próximamente.";
+      } else if (tool.id === "pdf-to-jpeg") {
+        explanation = "La renderización y rasterización de páginas PDF completas a imágenes JPEG de alta definición está en desarrollo con motor local.";
+      } else if (tool.id === "unlock-pdf") {
+        explanation = "La remoción de restricciones y descifrado de seguridad criptográfica de documentos PDF estará disponible en la próxima actualización.";
+      }
+
+      container.innerHTML = `
+        <div style="text-align: center; padding: 28px 16px; background: var(--md-sys-color-surface-variant); border-radius: 16px; border: 1px dashed var(--md-sys-color-outline-variant);">
+          <div style="font-size: 38px; margin-bottom: 10px;">🛠️</div>
+          <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 6px; color: var(--md-sys-color-on-surface);">Herramienta en Desarrollo</h3>
+          <p style="font-size: 13px; color: var(--md-sys-color-on-surface-variant); max-width: 480px; margin: 0 auto 16px; line-height: 1.5;">
+            ${explanation}
+          </p>
+          <div style="display: inline-flex; align-items: center; gap: 6px; background: #e8f0fe; color: #1a73e8; font-size: 12px; font-weight: 600; padding: 6px 14px; border-radius: 20px;">
+            <span>⏱️</span> Próximamente disponible en ToolDrive
+          </div>
+        </div>
+      `;
+
+      footer.innerHTML = `
+        <button class="ui-btn ui-btn-primary" onclick="closeToolModal()">Entendido</button>
+      `;
+      break;
+    }
+
+    // ---------------- AUDIO & VIDEO TOOLS (PREVIEW + PROXIMAMENTE) ----------------
     case "video-to-mp3":
     case "mp4-to-gif":
     case "video-compress":
     case "audio-converter":
     case "video-cutter": {
-      const isVtoMp3 = tool.id === "video-to-mp3";
-      const isGif = tool.id === "mp4-to-gif";
-      const isCutter = tool.id === "video-cutter";
-      const isCompress = tool.id === "video-compress";
       const isAudioConv = tool.id === "audio-converter";
 
       container.innerHTML = `
@@ -2633,132 +3004,54 @@ function buildToolWorkspace(tool, container, footer) {
             <video id="mediaPlayerPreview" controls style="max-width: 100%; max-height: 220px;"></video>
           </div>
 
-          ${isCutter ? `
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
-              <div class="ui-control-group">
-                <label class="ui-control-label">Inicio del corte (segundos):</label>
-                <input type="number" id="cutStart" class="ui-input" value="0" min="0">
+          <div style="font-size: 12px; color: var(--md-sys-color-on-surface-variant); margin-bottom: 12px;">
+            Archivo cargado: <strong id="mediaLoadedName" style="color: var(--md-sys-color-on-surface);">-</strong>
+          </div>
+
+          <div style="background: var(--md-sys-color-surface-variant); border-radius: 12px; padding: 14px 16px; border: 1px solid var(--md-sys-color-outline-variant);">
+            <div style="display: flex; align-items: flex-start; gap: 10px;">
+              <span style="font-size: 20px; line-height: 1;">ℹ️</span>
+              <div>
+                <div style="font-size: 13px; font-weight: 600; margin-bottom: 2px;">Conversión multimedia local sin servidores</div>
+                <div style="font-size: 12px; color: var(--md-sys-color-on-surface-variant); line-height: 1.4;">
+                  Para transcodificar y exportar video o audio en el navegador de manera 100% privada se requiere el motor FFmpeg WebAssembly (~30 MB). Esta función estará activa en la próxima versión de ToolDrive para garantizar privacidad y óptimo rendimiento.
+                </div>
               </div>
-              <div class="ui-control-group">
-                <label class="ui-control-label">Fin del corte (segundos):</label>
-                <input type="number" id="cutEnd" class="ui-input" value="15" min="1">
-              </div>
             </div>
-          ` : ''}
-
-          ${isVtoMp3 ? `
-            <div class="ui-control-group">
-              <label class="ui-control-label">Calidad de audio MP3 (Bitrate):</label>
-              <select id="mp3Bitrate" class="ui-select">
-                <option value="128">128 kbps (Tamaño liviano)</option>
-                <option value="192" selected>192 kbps (Calidad estándar recomendada)</option>
-                <option value="320">320 kbps (Máxima fidelidad de estudio)</option>
-              </select>
-            </div>
-          ` : ''}
-
-          ${isAudioConv ? `
-            <div class="ui-control-group">
-              <label class="ui-control-label">Formato de audio de destino:</label>
-              <select id="audioTargetFormat" class="ui-select">
-                <option value="mp3" selected>MP3 (Universal)</option>
-                <option value="wav">WAV (Audio sin compresión)</option>
-                <option value="flac">FLAC (Lossless de alta resolución)</option>
-                <option value="m4a">M4A (AAC optimizado)</option>
-                <option value="ogg">OGG (Vorbis)</option>
-              </select>
-            </div>
-          ` : ''}
-
-          ${isGif ? `
-            <div class="ui-control-group">
-              <label class="ui-control-label">Cuadros por segundo (FPS) del GIF:</label>
-              <select id="gifFps" class="ui-select">
-                <option value="10">10 FPS (Muy liviano)</option>
-                <option value="15" selected>15 FPS (Fluido y equilibrado)</option>
-                <option value="24">24 FPS (Máxima fluidez)</option>
-              </select>
-            </div>
-          ` : ''}
-
-          <div id="mediaProgressWrap" style="display: none; margin-top: 14px;">
-            <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px;">
-              <span>Exportando multimedia...</span>
-              <span id="mediaPercent">0%</span>
-            </div>
-            <div class="storage-bar-bg"><div id="mediaBarFill" class="storage-bar-fill" style="width: 0%;"></div></div>
           </div>
         </div>
       `;
 
       footer.innerHTML = `
-        <button class="ui-btn ui-btn-outlined" onclick="closeToolModal()">Cancelar</button>
-        <button id="btnMediaAction" class="ui-btn ui-btn-primary" disabled onclick="executeMediaAction('${tool.id}')">
-          ${isVtoMp3 ? 'Extraer Audio MP3' : isGif ? 'Generar GIF' : isCutter ? 'Cortar y Descargar' : 'Procesar Multimedia'}
+        <button class="ui-btn ui-btn-outlined" onclick="closeToolModal()">Cerrar</button>
+        <button class="ui-btn ui-btn-primary" disabled style="opacity: 0.65; cursor: not-allowed;" title="Motor FFmpeg.wasm en preparación">
+          Próximamente disponible
         </button>
       `;
 
       const fileInput = document.getElementById("mediaFileInput");
+      const dropzone = document.getElementById("mediaDropzone");
       const workArea = document.getElementById("mediaWorkArea");
       const player = document.getElementById("mediaPlayerPreview");
-      const btnExec = document.getElementById("btnMediaAction");
-      let originalMediaName = "multimedia";
 
-      fileInput.addEventListener("change", (e) => {
-        const file = e.target.files[0];
+      function handleMediaFile(file) {
         if (!file) return;
-        originalMediaName = file.name.replace(/\.[^/.]+$/, "");
+        document.getElementById("mediaLoadedName").innerText = `${file.name} (${(file.size / (1024 * 1024)).toFixed(2)} MB)`;
         player.src = URL.createObjectURL(file);
-        document.getElementById("mediaDropzone").style.display = "none";
+        dropzone.style.display = "none";
         workArea.style.display = "block";
-        btnExec.removeAttribute("disabled");
+        showToast("Archivo multimedia cargado en el reproductor");
+      }
 
-        player.onloadedmetadata = () => {
-          if (isCutter) {
-            document.getElementById("cutEnd").value = Math.min(30, Math.floor(player.duration || 15));
-          }
-        };
+      fileInput.addEventListener("change", (e) => handleMediaFile(e.target.files[0]));
+
+      dropzone.addEventListener("dragover", (e) => { e.preventDefault(); dropzone.classList.add("dragover"); });
+      dropzone.addEventListener("dragleave", () => dropzone.classList.remove("dragover"));
+      dropzone.addEventListener("drop", (e) => {
+        e.preventDefault();
+        dropzone.classList.remove("dragover");
+        if (e.dataTransfer.files.length) handleMediaFile(e.dataTransfer.files[0]);
       });
-
-      window.executeMediaAction = function(actionId) {
-        const progressWrap = document.getElementById("mediaProgressWrap");
-        const barFill = document.getElementById("mediaBarFill");
-        const percentText = document.getElementById("mediaPercent");
-
-        progressWrap.style.display = "block";
-        btnExec.setAttribute("disabled", "true");
-
-        let p = 0;
-        const interval = setInterval(() => {
-          p += 12;
-          if (p > 100) p = 100;
-          barFill.style.width = `${p}%`;
-          percentText.innerText = `${p}%`;
-
-          if (p >= 100) {
-            clearInterval(interval);
-            setTimeout(() => {
-              let ext = ".mp3";
-              let mime = "audio/mp3";
-              if (actionId === "mp4-to-gif") { ext = ".gif"; mime = "image/gif"; }
-              else if (actionId === "video-cutter" || actionId === "video-compress") { ext = ".mp4"; mime = "video/mp4"; }
-              else if (actionId === "audio-converter") {
-                ext = "." + document.getElementById("audioTargetFormat").value;
-                mime = "audio/" + document.getElementById("audioTargetFormat").value;
-              }
-
-              const blob = new Blob(["Simulated media export file"], { type: mime });
-              const a = document.createElement("a");
-              a.download = `${originalMediaName}-tooldrive${ext}`;
-              a.href = URL.createObjectURL(blob);
-              a.click();
-
-              showToast("¡Archivo multimedia exportado con éxito!");
-              closeToolModal();
-            }, 300);
-          }
-        }, 100);
-      };
       break;
     }
 

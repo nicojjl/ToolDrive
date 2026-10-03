@@ -295,6 +295,14 @@
 
   <!-- Scripts -->
   <script src="qr-lib.js"></script>
+  <script src="pdf-lib.min.js"></script>
+  <script>
+    if (typeof PDFLib === "undefined") {
+      var p = document.createElement("script");
+      p.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js";
+      document.head.appendChild(p);
+    }
+  </script>
   <script src="tesseract.min.js"></script>
   <script>
     if (typeof Tesseract === "undefined") {
