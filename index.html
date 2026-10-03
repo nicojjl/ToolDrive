@@ -300,6 +300,8 @@
     if (typeof PDFLib === "undefined") {
       var p = document.createElement("script");
       p.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js";
+      p.integrity = "sha512-z8IYLHO8bTgFqj+yrPyIJnzBDf7DDhWwiEsk4sY+Oe6J2M+WQequeGS7qioI5vT6rXgVRb4K1UVQC5ER7MKzKQ==";
+      p.crossOrigin = "anonymous";
       document.head.appendChild(p);
     }
   </script>

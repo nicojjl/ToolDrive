@@ -372,16 +372,58 @@ const TOOLS = [
   }
 ];
 
+// ==================== SECURITY & STORAGE UTILITIES ====================
+function escapeHtml(str) {
+  if (str === null || str === undefined) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function safeGetStorageJson(key, defaultValue) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw === null || raw === undefined) return defaultValue;
+    const parsed = JSON.parse(raw);
+    return parsed !== null && parsed !== undefined ? parsed : defaultValue;
+  } catch (err) {
+    console.warn(`[ToolDrive] Error al parsear "${key}" desde localStorage:`, err);
+    return defaultValue;
+  }
+}
+
+function safeSetStorage(key, value) {
+  try {
+    const serialized = typeof value === "string" ? value : JSON.stringify(value);
+    localStorage.setItem(key, serialized);
+    return true;
+  } catch (err) {
+    console.error(`[ToolDrive] Error al guardar en localStorage ("${key}"):`, err);
+    if (err && (err.name === "QuotaExceededError" || err.code === 22 || err.code === 1014)) {
+      showToast("Almacenamiento lleno: no se pudieron guardar los cambios locales.");
+    } else {
+      showToast("Error al guardar los datos en el navegador.");
+    }
+    return false;
+  }
+}
+
 // ==================== APP STATE ====================
 let currentCategory = "all";
 let currentSearch = "";
 let currentView = "list"; // "list" | "grid"
-let favorites = JSON.parse(localStorage.getItem("tooldrive_favorites") || "[]");
-let recentTools = JSON.parse(localStorage.getItem("tooldrive_recents") || "[]");
-let quickNotes = localStorage.getItem("tooldrive_notes") || "";
+let favorites = safeGetStorageJson("tooldrive_favorites", []);
+let recentTools = safeGetStorageJson("tooldrive_recents", []);
+let quickNotes = "";
+try {
+  quickNotes = localStorage.getItem("tooldrive_notes") || "";
+} catch(e) {}
 
 // Custom Folders State
-let customFolders = JSON.parse(localStorage.getItem("tooldrive_custom_folders") || "null");
+let customFolders = safeGetStorageJson("tooldrive_custom_folders", null);
 if (!customFolders || !Array.isArray(customFolders)) {
   customFolders = [
     {
@@ -391,12 +433,12 @@ if (!customFolders || !Array.isArray(customFolders)) {
       tools: ["doc-to-pdf", "image-compress", "qr-generator"]
     }
   ];
-  localStorage.setItem("tooldrive_custom_folders", JSON.stringify(customFolders));
+  safeSetStorage("tooldrive_custom_folders", customFolders);
 }
 
 // Default Folders Overrides & Hidden Folders State
-let defaultFolderOverrides = JSON.parse(localStorage.getItem("tooldrive_default_folder_overrides") || "{}");
-let hiddenFolders = JSON.parse(localStorage.getItem("tooldrive_hidden_folders") || "[]");
+let defaultFolderOverrides = safeGetStorageJson("tooldrive_default_folder_overrides", {});
+let hiddenFolders = safeGetStorageJson("tooldrive_hidden_folders", []);
 
 const FOLDER_COLORS = ["#ea4335", "#1a73e8", "#34a853", "#f9ab00", "#9c27b0", "#009688", "#e91e63", "#ff6d00"];
 let currentContextMenuFolderId = null;
@@ -486,15 +528,15 @@ function validateFolderName(rawName, targetFolderId = null) {
 }
 
 function saveCustomFolders() {
-  localStorage.setItem("tooldrive_custom_folders", JSON.stringify(customFolders));
+  safeSetStorage("tooldrive_custom_folders", customFolders);
   renderSidebarNav();
   renderFolders();
   renderTools();
 }
 
 function saveDefaultFolderOverrides() {
-  localStorage.setItem("tooldrive_default_folder_overrides", JSON.stringify(defaultFolderOverrides));
-  localStorage.setItem("tooldrive_hidden_folders", JSON.stringify(hiddenFolders));
+  safeSetStorage("tooldrive_default_folder_overrides", defaultFolderOverrides);
+  safeSetStorage("tooldrive_hidden_folders", hiddenFolders);
   renderSidebarNav();
   renderFolders();
   renderTools();
@@ -552,7 +594,7 @@ function renderSidebarNav() {
     html += `
       <div class="nav-item ${isActive}" data-category="${cat.id}">
         <span class="nav-icon">${cat.icon}</span>
-        <span>${cat.label}</span>
+        <span>${escapeHtml(cat.label)}</span>
         <span class="badge">${cat.count}</span>
       </div>
     `;
@@ -600,7 +642,7 @@ function renderSidebarNav() {
       html += `
         <div class="nav-item ${isActive}" data-category="${cf.id}">
           <span class="nav-icon" style="color: ${cf.color};">${ICONS.folder}</span>
-          <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${cf.name}</span>
+          <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(cf.name)}</span>
           <span class="badge">${cf.tools.length}</span>
         </div>
       `;
@@ -644,10 +686,10 @@ function renderFolders() {
         ${ICONS.folder}
       </div>
       <div class="folder-info">
-        <div class="folder-name">${f.name}</div>
+        <div class="folder-name">${escapeHtml(f.name)}</div>
         <div class="folder-meta">${f.count}</div>
       </div>
-      <button type="button" class="folder-more" id="folderMoreBtn_${f.id}" aria-label="Opciones de carpeta ${f.name.replace(/"/g, '&quot;')}" aria-haspopup="menu" aria-expanded="false" onclick="openFolderContextMenu('${f.id}', event)" onkeydown="handleFolderMoreKeydown('${f.id}', event)" title="Opciones de carpeta">
+      <button type="button" class="folder-more" id="folderMoreBtn_${f.id}" aria-label="Opciones de carpeta ${escapeHtml(f.name)}" aria-haspopup="menu" aria-expanded="false" onclick="openFolderContextMenu('${f.id}', event)" onkeydown="handleFolderMoreKeydown('${f.id}', event)" title="Opciones de carpeta">
         ${ICONS.more}
       </button>
     </div>
@@ -662,10 +704,10 @@ function renderFolders() {
           ${ICONS.folder}
         </div>
         <div class="folder-info">
-          <div class="folder-name" title="${cf.name}">${cf.name}</div>
+          <div class="folder-name" title="${escapeHtml(cf.name)}">${escapeHtml(cf.name)}</div>
           <div class="folder-meta">${cf.tools.length} ${cf.tools.length === 1 ? 'herramienta' : 'herramientas'}</div>
         </div>
-        <button type="button" class="folder-more" id="folderMoreBtn_${cf.id}" aria-label="Opciones de carpeta ${cf.name.replace(/"/g, '&quot;')}" aria-haspopup="menu" aria-expanded="false" onclick="openFolderContextMenu('${cf.id}', event)" onkeydown="handleFolderMoreKeydown('${cf.id}', event)" title="Opciones de carpeta">
+        <button type="button" class="folder-more" id="folderMoreBtn_${cf.id}" aria-label="Opciones de carpeta ${escapeHtml(cf.name)}" aria-haspopup="menu" aria-expanded="false" onclick="openFolderContextMenu('${cf.id}', event)" onkeydown="handleFolderMoreKeydown('${cf.id}', event)" title="Opciones de carpeta">
           ${ICONS.more}
         </button>
       </div>
@@ -737,7 +779,7 @@ function renderTools() {
               ${ICONS.folder}
             </div>
             <div>
-              <div class="custom-folder-title">${activeFolder.name}</div>
+              <div class="custom-folder-title">${escapeHtml(activeFolder.name)}</div>
               <div class="custom-folder-subtitle">Carpeta personalizada • ${filtered.length} ${filtered.length === 1 ? 'herramienta' : 'herramientas'}</div>
             </div>
           </div>
@@ -892,10 +934,10 @@ function setCategory(cat) {
     else {
       const folderInfo = getFolderInfo(cat);
       if (folderInfo) {
-        bannerTitle.innerHTML = `Carpeta: <strong>${folderInfo.name}</strong>`;
+        bannerTitle.innerHTML = `Carpeta: <strong>${escapeHtml(folderInfo.name)}</strong>`;
       } else {
         const folder = TOOLS.find(t => t.category === cat);
-        bannerTitle.innerHTML = `Categoría: <strong>${folder ? folder.categoryName : cat}</strong>`;
+        bannerTitle.innerHTML = `Categoría: <strong>${escapeHtml(folder ? folder.categoryName : cat)}</strong>`;
       }
     }
   }
@@ -955,7 +997,7 @@ function toggleFavorite(id, event) {
     favorites.push(id);
     showToast("Añadido a Destacados");
   }
-  localStorage.setItem("tooldrive_favorites", JSON.stringify(favorites));
+  safeSetStorage("tooldrive_favorites", favorites);
   renderSidebarNav();
   renderTools();
 }
@@ -964,7 +1006,7 @@ function markAsRecent(id) {
   recentTools = recentTools.filter(item => item !== id);
   recentTools.unshift(id);
   if (recentTools.length > 10) recentTools.pop();
-  localStorage.setItem("tooldrive_recents", JSON.stringify(recentTools));
+  safeSetStorage("tooldrive_recents", recentTools);
   renderSidebarNav();
 }
 
@@ -976,10 +1018,16 @@ function showToast(message) {
 
   const toast = document.createElement("div");
   toast.className = "toast";
-  toast.innerHTML = `
-    <span style="color: #34a853;">${ICONS.check}</span>
-    <span>${message}</span>
-  `;
+
+  const iconSpan = document.createElement("span");
+  iconSpan.style.color = "#34a853";
+  iconSpan.innerHTML = ICONS.check;
+
+  const textSpan = document.createElement("span");
+  textSpan.textContent = message;
+
+  toast.appendChild(iconSpan);
+  toast.appendChild(textSpan);
   container.appendChild(toast);
 
   setTimeout(() => {
@@ -991,7 +1039,10 @@ function showToast(message) {
 
 // ==================== TEMA OSCURO / CLARO (iOS SWITCH) ====================
 function initTheme() {
-  const savedTheme = localStorage.getItem("tooldrive_theme");
+  let savedTheme = null;
+  try {
+    savedTheme = localStorage.getItem("tooldrive_theme");
+  } catch (e) {}
   const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
 
   if (savedTheme === "dark" || (!savedTheme && prefersDark)) {
@@ -1014,10 +1065,29 @@ function initTheme() {
 
 window.toggleTheme = function() {
   const isDark = document.body.classList.toggle("dark-theme");
-  localStorage.setItem("tooldrive_theme", isDark ? "dark" : "light");
+  safeSetStorage("tooldrive_theme", isDark ? "dark" : "light");
   showToast(isDark ? "Modo oscuro activado" : "Modo claro activado");
 };
 
+
+// ==================== OBJECT URL REGISTRY & CLEANUP ====================
+let activeModalObjectUrls = [];
+
+function registerModalObjectUrl(url) {
+  if (url && typeof url === "string") {
+    activeModalObjectUrls.push(url);
+  }
+  return url;
+}
+
+function revokeAllModalObjectUrls() {
+  if (activeModalObjectUrls.length > 0) {
+    activeModalObjectUrls.forEach(url => {
+      try { URL.revokeObjectURL(url); } catch (e) {}
+    });
+    activeModalObjectUrls = [];
+  }
+}
 
 // ==================== INTERACTIVE TOOLS WORKSPACE ====================
 window.openToolModal = function(toolId) {
@@ -1061,6 +1131,8 @@ window.closeToolModal = function() {
   if (window.cleanOcrResources) {
     try { window.cleanOcrResources(); } catch(e) {}
   }
+  // Clean any active object URLs created inside tool modals
+  revokeAllModalObjectUrls();
 };
 
 // ==================== STATIC MODAL BACKDROP HANDLER ====================
@@ -1101,7 +1173,7 @@ window.openNewFolderModal = function(editFolderId = null) {
   let bodyHtml = `
     <div class="ui-control-group">
       <label class="ui-control-label">Nombre de la carpeta</label>
-      <input type="text" id="folderNameInput" class="ui-input" maxlength="40" placeholder="Ejemplo 1, Documentos Contables, etc. (Máximo 40 caracteres)" value="${isEditing ? existingFolder.name : ''}" autofocus />
+      <input type="text" id="folderNameInput" class="ui-input" maxlength="40" placeholder="Ejemplo 1, Documentos Contables, etc. (Máximo 40 caracteres)" value="${isEditing ? escapeHtml(existingFolder.name) : ''}" autofocus />
     </div>
 
     <div class="ui-control-group">
@@ -1336,7 +1408,7 @@ window.openAssignToolModal = function(toolId, event) {
               <input type="checkbox" id="chk_assign_${cf.id}" ${isIncluded ? 'checked' : ''} onclick="event.stopPropagation(); toggleToolInFolderDirect('${cf.id}', '${tool.id}', this);" />
               <div class="tool-file-icon" style="color: ${cf.color};">${ICONS.folder}</div>
               <div class="tool-checkbox-info">
-                <div class="tool-checkbox-title">${cf.name}</div>
+                <div class="tool-checkbox-title">${escapeHtml(cf.name)}</div>
                 <div class="tool-checkbox-cat">${cf.tools.length} ${cf.tools.length === 1 ? 'herramienta' : 'herramientas'}</div>
               </div>
             </div>
@@ -2116,11 +2188,11 @@ function buildToolWorkspace(tool, container, footer) {
         try {
           const parsed = JSON.parse(area.value);
           area.value = JSON.stringify(parsed, null, spaces);
-          status.innerText = "✓ JSON Válido y formateado";
+          status.textContent = "✓ JSON Válido y formateado";
           status.style.color = "#34a853";
           showToast("JSON Formateado");
         } catch (err) {
-          status.innerText = "✗ Error de sintaxis: " + err.message;
+          status.textContent = "✗ Error de sintaxis: " + err.message;
           status.style.color = "#ea4335";
         }
       };
@@ -2131,11 +2203,11 @@ function buildToolWorkspace(tool, container, footer) {
         try {
           const parsed = JSON.parse(area.value);
           area.value = JSON.stringify(parsed);
-          status.innerText = "✓ JSON Minificado correctamente";
+          status.textContent = "✓ JSON Minificado correctamente";
           status.style.color = "#34a853";
           showToast("JSON Minificado");
         } catch (err) {
-          status.innerText = "✗ Error de sintaxis: " + err.message;
+          status.textContent = "✗ Error de sintaxis: " + err.message;
           status.style.color = "#ea4335";
         }
       };
@@ -2144,9 +2216,11 @@ function buildToolWorkspace(tool, container, footer) {
         const text = document.getElementById("jsonArea").value;
         const blob = new Blob([text], { type: "application/json" });
         const a = document.createElement("a");
-        a.href = URL.createObjectURL(blob);
+        const blobUrl = URL.createObjectURL(blob);
+        a.href = blobUrl;
         a.download = "data.json";
         a.click();
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
         showToast("Archivo JSON descargado");
       };
 
@@ -2252,17 +2326,35 @@ function buildToolWorkspace(tool, container, footer) {
       };
 
       const btnEye = document.getElementById("btnEyeDropper");
-      if (window.EyeDropper) {
-        btnEye.addEventListener("click", async () => {
-          try {
-            const eyeDropper = new EyeDropper();
-            const res = await eyeDropper.open();
-            updateColorValues(res.sRGBHex);
-            showToast("Color seleccionado con éxito");
-          } catch(e) {}
-        });
-      } else {
-        btnEye.style.display = "none";
+      if (btnEye) {
+        if (window.EyeDropper) {
+          btnEye.addEventListener("click", async () => {
+            try {
+              const eyeDropper = new EyeDropper();
+              const res = await eyeDropper.open();
+              if (res && res.sRGBHex) {
+                updateColorValues(res.sRGBHex);
+                showToast("Color seleccionado con éxito");
+              }
+            } catch(e) {
+              if (e.name !== "AbortError") {
+                showToast("No se pudo obtener el color de pantalla");
+              }
+            }
+          });
+        } else {
+          btnEye.disabled = true;
+          btnEye.style.opacity = "0.55";
+          btnEye.style.cursor = "not-allowed";
+          btnEye.title = "Cuentagotas no compatible con este navegador (se requiere Google Chrome o Microsoft Edge)";
+          const hint = document.createElement("div");
+          hint.style.fontSize = "11px";
+          hint.style.color = "var(--md-sys-color-outline)";
+          hint.style.marginTop = "6px";
+          hint.style.textAlign = "center";
+          hint.textContent = "Navegador no compatible con EyeDropper (usa Chrome o Edge)";
+          btnEye.parentNode.appendChild(hint);
+        }
       }
       break;
     }
@@ -2297,6 +2389,18 @@ function buildToolWorkspace(tool, container, footer) {
       let isRecording = false;
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
+      const initBtn = document.getElementById("micPulseBtn");
+      const initStatus = document.getElementById("micStatusText");
+      if (!SpeechRecognition && initStatus) {
+        initStatus.textContent = "Tu navegador no soporta reconocimiento de voz. Por favor usa Google Chrome o Microsoft Edge.";
+        initStatus.style.color = "#ea4335";
+        if (initBtn) {
+          initBtn.style.opacity = "0.55";
+          initBtn.style.cursor = "not-allowed";
+          initBtn.style.boxShadow = "none";
+        }
+      }
+
       window.toggleDictation = function() {
         const btn = document.getElementById("micPulseBtn");
         const status = document.getElementById("micStatusText");
@@ -2304,8 +2408,9 @@ function buildToolWorkspace(tool, container, footer) {
         const lang = document.getElementById("speechLang").value;
 
         if (!SpeechRecognition) {
-          status.innerText = "Tu navegador no soporta Web Speech API. Usa Google Chrome o Edge.";
+          status.textContent = "Tu navegador no soporta Web Speech API. Usa Google Chrome o Edge.";
           status.style.color = "#ea4335";
+          showToast("Navegador no compatible con dictado por voz");
           return;
         }
 
@@ -2314,7 +2419,7 @@ function buildToolWorkspace(tool, container, footer) {
           isRecording = false;
           btn.style.transform = "scale(1)";
           btn.style.background = "#ea4335";
-          status.innerText = "Dictado pausado. Toca de nuevo para reanudar.";
+          status.textContent = "Dictado pausado. Toca de nuevo para reanudar.";
           status.style.color = "#444746";
         } else {
           const rec = new SpeechRecognition();
@@ -2326,7 +2431,7 @@ function buildToolWorkspace(tool, container, footer) {
             isRecording = true;
             btn.style.transform = "scale(1.1)";
             btn.style.background = "#34a853";
-            status.innerText = "🔴 Escuchando... Habla ahora claramente.";
+            status.textContent = "🔴 Escuchando... Habla ahora claramente.";
             status.style.color = "#34a853";
           };
 
@@ -2339,19 +2444,32 @@ function buildToolWorkspace(tool, container, footer) {
           };
 
           rec.onerror = (e) => {
-            status.innerText = "Error: " + e.error;
+            let userMsg = "Error en el reconocimiento de voz: " + (e.error || "desconocido");
+            if (e.error === "not-allowed") {
+              userMsg = "Permiso de micrófono denegado. Permite el acceso al micrófono en tu navegador.";
+            } else if (e.error === "no-speech") {
+              userMsg = "No se detectó voz. Asegúrate de hablar claramente cerca del micrófono.";
+            } else if (e.error === "audio-capture") {
+              userMsg = "No se encontró ningún micrófono conectado en tu equipo.";
+            } else if (e.error === "network") {
+              userMsg = "Error de conexión con el servicio de voz. Revisa tu conexión a Internet.";
+            }
+            status.textContent = userMsg;
             status.style.color = "#ea4335";
             isRecording = false;
             btn.style.transform = "scale(1)";
             btn.style.background = "#ea4335";
+            showToast(userMsg);
           };
 
           rec.onend = () => {
             isRecording = false;
             btn.style.transform = "scale(1)";
             btn.style.background = "#ea4335";
-            status.innerText = "Dictado finalizado.";
-            status.style.color = "#444746";
+            if (!status.textContent.includes("denegado") && !status.textContent.includes("No se encontró")) {
+              status.textContent = "Dictado finalizado.";
+              status.style.color = "#444746";
+            }
           };
 
           window.speechRecognitionInstance = rec;
@@ -2452,7 +2570,7 @@ function buildToolWorkspace(tool, container, footer) {
               <button class="ui-btn ui-btn-outlined" style="margin-left: auto; height: 30px; font-size: 12px; padding: 4px 10px;" onclick="clearSignature()">Borrar trazo</button>
             </div>
             <div style="border: 1px dashed var(--md-sys-color-outline-variant); border-radius: 12px; background: var(--md-sys-color-surface); padding: 4px;">
-              <canvas id="signPadCanvas" class="signature-canvas" style="width: 100%; height: 160px; display: block;"></canvas>
+              <canvas id="signPadCanvas" class="signature-canvas" style="width: 100%; height: 160px; display: block; touch-action: none; cursor: crosshair;"></canvas>
             </div>
           </div>
 
@@ -2487,6 +2605,7 @@ function buildToolWorkspace(tool, container, footer) {
       const ctx = canvas.getContext("2d");
       canvas.width = canvas.parentElement.clientWidth || 550;
       canvas.height = 160;
+      canvas.style.touchAction = "none";
 
       let isDrawing = false;
       let hasDrawn = false;
@@ -2500,8 +2619,9 @@ function buildToolWorkspace(tool, container, footer) {
 
       function getPos(e) {
         const rect = canvas.getBoundingClientRect();
-        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        const touch = (e.touches && e.touches.length > 0) ? e.touches[0] : ((e.changedTouches && e.changedTouches.length > 0) ? e.changedTouches[0] : null);
+        const clientX = touch ? touch.clientX : e.clientX;
+        const clientY = touch ? touch.clientY : e.clientY;
         return {
           x: (clientX - rect.left) * (canvas.width / rect.width),
           y: (clientY - rect.top) * (canvas.height / rect.height)
@@ -2509,24 +2629,27 @@ function buildToolWorkspace(tool, container, footer) {
       }
 
       function startDraw(e) {
+        if (e && e.cancelable) e.preventDefault();
         isDrawing = true;
         hasDrawn = true;
         checkSignPdfReady();
         const pos = getPos(e);
         ctx.beginPath();
         ctx.moveTo(pos.x, pos.y);
-        e.preventDefault();
       }
 
       function draw(e) {
         if (!isDrawing) return;
+        if (e && e.cancelable) e.preventDefault();
         const pos = getPos(e);
         ctx.lineTo(pos.x, pos.y);
         ctx.stroke();
-        e.preventDefault();
       }
 
-      function stopDraw() { isDrawing = false; }
+      function stopDraw(e) {
+        if (e && e.cancelable) e.preventDefault();
+        isDrawing = false;
+      }
 
       canvas.addEventListener("mousedown", startDraw);
       canvas.addEventListener("mousemove", draw);
@@ -2535,7 +2658,8 @@ function buildToolWorkspace(tool, container, footer) {
 
       canvas.addEventListener("touchstart", startDraw, { passive: false });
       canvas.addEventListener("touchmove", draw, { passive: false });
-      canvas.addEventListener("touchend", stopDraw);
+      canvas.addEventListener("touchend", stopDraw, { passive: false });
+      canvas.addEventListener("touchcancel", stopDraw, { passive: false });
 
       window.setPenColor = function(c) {
         penColor = c;
@@ -2564,7 +2688,7 @@ function buildToolWorkspace(tool, container, footer) {
         const file = e.target.files[0];
         if (!file) return;
         loadedPdfToSign = file;
-        document.getElementById("signPdfFileInfo").innerHTML = `✓ <strong>${file.name}</strong> (${(file.size / 1024).toFixed(1)} KB)`;
+        document.getElementById("signPdfFileInfo").innerHTML = `✓ <strong>${escapeHtml(file.name)}</strong> (${(file.size / 1024).toFixed(1)} KB)`;
         document.getElementById("signPageChoiceWrap").style.display = "block";
         checkSignPdfReady();
         showToast("PDF cargado listo para firmar");
@@ -2633,8 +2757,10 @@ function buildToolWorkspace(tool, container, footer) {
           const a = document.createElement("a");
           const baseName = loadedPdfToSign.name.replace(/\.[^/.]+$/, "");
           a.download = `${baseName}-firmado.pdf`;
-          a.href = URL.createObjectURL(blob);
+          const blobUrl = URL.createObjectURL(blob);
+          a.href = blobUrl;
           a.click();
+          setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
 
           showToast("✓ ¡Documento PDF firmado y descargado!");
           closeToolModal();
@@ -2687,11 +2813,11 @@ function buildToolWorkspace(tool, container, footer) {
               ${isResize ? `
                 <div class="ui-control-group">
                   <label class="ui-control-label">Ancho (px):</label>
-                  <input type="number" id="resizeWidth" class="ui-input" value="800">
+                  <input type="number" id="resizeWidth" class="ui-input" min="1" value="800">
                 </div>
                 <div class="ui-control-group">
                   <label class="ui-control-label">Alto (px):</label>
-                  <input type="number" id="resizeHeight" class="ui-input" value="600">
+                  <input type="number" id="resizeHeight" class="ui-input" min="1" value="600">
                 </div>
               ` : ''}
 
@@ -2766,12 +2892,23 @@ function buildToolWorkspace(tool, container, footer) {
 
       function handleFile(file) {
         if (!file) return;
-        originalFileName = file.name.replace(/\.[^/.]+$/, "");
+
         const isHeic = file.name.toLowerCase().endsWith(".heic") || (file.type && file.type.includes("heic"));
+        const isGraphic = file.type.startsWith("image/") || isHeic || file.name.match(/\.(jpe?g|png|webp|gif|svg|bmp|heic)$/i);
+        if (!isGraphic) {
+          showToast("Archivo no válido: por favor selecciona una imagen gráfica (PNG, JPG, WebP, SVG o HEIC)");
+          return;
+        }
+
+        originalFileName = file.name.replace(/\.[^/.]+$/, "");
         const reader = new FileReader();
         reader.onload = (e) => {
           const img = new Image();
           img.onload = () => {
+            if (img.width === 0 || img.height === 0) {
+              showToast("La imagen seleccionada tiene dimensiones inválidas (0x0 píxeles)");
+              return;
+            }
             loadedImage = img;
             document.getElementById("imgDropzone").style.display = "none";
             document.getElementById("imgPreviewSection").style.display = "block";
@@ -2788,7 +2925,7 @@ function buildToolWorkspace(tool, container, footer) {
             if (isHeic) {
               showToast("Tu navegador actual no soporta decodificación nativa de HEIC (compatible con Safari)");
             } else {
-              showToast("No se pudo cargar la imagen seleccionada");
+              showToast("No se pudo decodificar la imagen seleccionada");
             }
           };
           img.src = e.target.result;
@@ -2809,16 +2946,23 @@ function buildToolWorkspace(tool, container, footer) {
       window.processAndDownloadImage = function() {
         if (!loadedImage) return;
 
-        const canvas = document.createElement("canvas");
-        const ctx = canvas.getContext("2d");
-        const quality = parseFloat(document.getElementById("imgQualitySlider").value);
-
         let targetW = loadedImage.width;
         let targetH = loadedImage.height;
 
         if (isResize) {
-          targetW = parseInt(document.getElementById("resizeWidth").value) || targetW;
-          targetH = parseInt(document.getElementById("resizeHeight").value) || targetH;
+          const wInput = document.getElementById("resizeWidth");
+          const hInput = document.getElementById("resizeHeight");
+          const wVal = parseInt(wInput ? wInput.value : 0, 10);
+          const hVal = parseInt(hInput ? hInput.value : 0, 10);
+
+          if (isNaN(wVal) || wVal <= 0 || isNaN(hVal) || hVal <= 0) {
+            showToast("Dimensiones inválidas: el ancho y alto deben ser números mayores a 0");
+            if (wInput && (isNaN(wVal) || wVal <= 0)) wInput.focus();
+            else if (hInput) hInput.focus();
+            return;
+          }
+          targetW = wVal;
+          targetH = hVal;
         } else if (isUpscale) {
           const factor = parseInt(document.getElementById("upscaleFactor").value) || 2;
           targetW = loadedImage.width * factor;
@@ -2831,6 +2975,15 @@ function buildToolWorkspace(tool, container, footer) {
             targetH = Math.round(targetW / ratio);
           }
         }
+
+        if (targetW <= 0 || targetH <= 0) {
+          showToast("Dimensiones no válidas para procesar la imagen");
+          return;
+        }
+
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+        const quality = parseFloat(document.getElementById("imgQualitySlider").value);
 
         canvas.width = targetW;
         canvas.height = targetH;
@@ -2859,10 +3012,16 @@ function buildToolWorkspace(tool, container, footer) {
         }
 
         canvas.toBlob((blob) => {
+          if (!blob) {
+            showToast("Error al procesar la imagen");
+            return;
+          }
           const a = document.createElement("a");
           a.download = `${originalFileName}-tooldrive${extTarget}`;
-          a.href = URL.createObjectURL(blob);
+          const blobUrl = URL.createObjectURL(blob);
+          a.href = blobUrl;
           a.click();
+          setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
           showToast(`¡Imagen procesada y descargada! (${(blob.size / 1024).toFixed(1)} KB)`);
         }, formatTarget, quality);
       };
@@ -2937,7 +3096,7 @@ function buildToolWorkspace(tool, container, footer) {
               <span style="font-weight: 600; color: var(--md-sys-color-primary);">${i + 1}.</span>
               <span>${ICONS.pdf}</span>
               <div>
-                <strong>${f.name}</strong>
+                <strong>${escapeHtml(f.name)}</strong>
                 <div style="font-size: 11px; color: var(--md-sys-color-on-surface-variant);">${(f.size / 1024).toFixed(1)} KB</div>
               </div>
             </div>
@@ -2993,7 +3152,7 @@ function buildToolWorkspace(tool, container, footer) {
           const mergedPdf = await PDFLib.PDFDocument.create();
           for (let i = 0; i < selectedMergeFiles.length; i++) {
             const f = selectedMergeFiles[i];
-            statusText.innerText = `Cargando ${f.name}...`;
+            statusText.textContent = `Cargando ${f.name}...`;
             const percent = Math.round(((i) / selectedMergeFiles.length) * 80);
             barFill.style.width = `${percent}%`;
             percentText.innerText = `${percent}%`;
@@ -3004,7 +3163,7 @@ function buildToolWorkspace(tool, container, footer) {
             copiedPages.forEach((page) => mergedPdf.addPage(page));
           }
 
-          statusText.innerText = "Generando PDF final combinado...";
+          statusText.textContent = "Generando PDF final combinado...";
           barFill.style.width = "90%";
           percentText.innerText = "90%";
 
@@ -3012,8 +3171,10 @@ function buildToolWorkspace(tool, container, footer) {
           const blob = new Blob([mergedBytes], { type: "application/pdf" });
           const a = document.createElement("a");
           a.download = "documentos-unidos-tooldrive.pdf";
-          a.href = URL.createObjectURL(blob);
+          const blobUrl = URL.createObjectURL(blob);
+          a.href = blobUrl;
           a.click();
+          setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
 
           barFill.style.width = "100%";
           percentText.innerText = "100%";
@@ -3094,7 +3255,7 @@ function buildToolWorkspace(tool, container, footer) {
 
           dropzone.style.display = "none";
           workArea.style.display = "block";
-          document.getElementById("pdfSplitFileName").innerText = file.name;
+          document.getElementById("pdfSplitFileName").textContent = file.name;
           document.getElementById("pdfSplitFileInfo").innerText = `${totalDocPages} páginas en total • ${(file.size / 1024).toFixed(1)} KB`;
           document.getElementById("pdfSplitHint").innerText = `Total de páginas: ${totalDocPages}. Puedes indicar rangos como: 1-${Math.min(3, totalDocPages)} o páginas sueltas como: 1, ${totalDocPages}`;
           document.getElementById("splitPagesInput").value = totalDocPages > 1 ? `1-${Math.min(2, totalDocPages)}` : "1";
@@ -3178,8 +3339,10 @@ function buildToolWorkspace(tool, container, footer) {
           const a = document.createElement("a");
           const baseName = loadedSplitFile.name.replace(/\.[^/.]+$/, "");
           a.download = `${baseName}-extraido.pdf`;
-          a.href = URL.createObjectURL(blob);
+          const blobUrl = URL.createObjectURL(blob);
+          a.href = blobUrl;
           a.click();
+          setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
 
           barFill.style.width = "100%";
           percentText.innerText = "100%";
@@ -3280,10 +3443,16 @@ function buildToolWorkspace(tool, container, footer) {
       const workArea = document.getElementById("mediaWorkArea");
       const player = document.getElementById("mediaPlayerPreview");
 
+      let currentMediaObjectUrl = null;
       function handleMediaFile(file) {
         if (!file) return;
-        document.getElementById("mediaLoadedName").innerText = `${file.name} (${(file.size / (1024 * 1024)).toFixed(2)} MB)`;
-        player.src = URL.createObjectURL(file);
+        if (currentMediaObjectUrl) {
+          URL.revokeObjectURL(currentMediaObjectUrl);
+        }
+        currentMediaObjectUrl = URL.createObjectURL(file);
+        registerModalObjectUrl(currentMediaObjectUrl);
+        player.src = currentMediaObjectUrl;
+        document.getElementById("mediaLoadedName").textContent = `${file.name} (${(file.size / (1024 * 1024)).toFixed(2)} MB)`;
         dropzone.style.display = "none";
         workArea.style.display = "block";
         showToast("Archivo multimedia cargado en el reproductor");
