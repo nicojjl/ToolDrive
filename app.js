@@ -439,6 +439,52 @@ function getFolderInfo(folderId) {
   return null;
 }
 
+function isValidFolderColor(color) {
+  if (typeof color !== "string") return false;
+  const trimmed = color.trim().toLowerCase();
+  const allowed = FOLDER_COLORS.map(c => c.toLowerCase());
+  if (allowed.includes(trimmed)) return true;
+  return /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(trimmed);
+}
+
+function validateFolderName(rawName, targetFolderId = null) {
+  const name = (rawName || "").trim();
+  if (!name) {
+    return { valid: false, message: "El nombre de la carpeta no puede estar vacío ni contener solo espacios." };
+  }
+  if (name.length > 40) {
+    return { valid: false, message: "El nombre no puede exceder los 40 caracteres." };
+  }
+
+  const lowerName = name.toLowerCase();
+
+  const baseDefaultFolders = [
+    { id: "pdf", defaultName: "Gestión de PDF" },
+    { id: "image", defaultName: "Edición de Imágenes" },
+    { id: "media", defaultName: "Audio y Video" },
+    { id: "text", defaultName: "Texto y Productividad" },
+    { id: "dev", defaultName: "Web y Desarrollador" }
+  ];
+
+  for (const def of baseDefaultFolders) {
+    if (def.id === targetFolderId) continue;
+    if (hiddenFolders.includes(def.id)) continue;
+    const defName = (defaultFolderOverrides[def.id]?.name || def.defaultName).trim().toLowerCase();
+    if (defName === lowerName) {
+      return { valid: false, message: `Ya existe una carpeta con el nombre "${name}". Elige otro nombre.` };
+    }
+  }
+
+  for (const cf of customFolders) {
+    if (cf.id === targetFolderId) continue;
+    if ((cf.name || "").trim().toLowerCase() === lowerName) {
+      return { valid: false, message: `Ya existe una carpeta con el nombre "${name}". Elige otro nombre.` };
+    }
+  }
+
+  return { valid: true, name };
+}
+
 function saveCustomFolders() {
   localStorage.setItem("tooldrive_custom_folders", JSON.stringify(customFolders));
   renderSidebarNav();
@@ -601,9 +647,9 @@ function renderFolders() {
         <div class="folder-name">${f.name}</div>
         <div class="folder-meta">${f.count}</div>
       </div>
-      <div class="folder-more" onclick="openFolderContextMenu('${f.id}', event)" title="Opciones de carpeta">
+      <button type="button" class="folder-more" id="folderMoreBtn_${f.id}" aria-label="Opciones de carpeta ${f.name.replace(/"/g, '&quot;')}" aria-haspopup="menu" aria-expanded="false" onclick="openFolderContextMenu('${f.id}', event)" onkeydown="handleFolderMoreKeydown('${f.id}', event)" title="Opciones de carpeta">
         ${ICONS.more}
-      </div>
+      </button>
     </div>
   `).join("");
 
@@ -619,9 +665,9 @@ function renderFolders() {
           <div class="folder-name" title="${cf.name}">${cf.name}</div>
           <div class="folder-meta">${cf.tools.length} ${cf.tools.length === 1 ? 'herramienta' : 'herramientas'}</div>
         </div>
-        <div class="folder-more" onclick="openFolderContextMenu('${cf.id}', event)" title="Opciones de carpeta">
+        <button type="button" class="folder-more" id="folderMoreBtn_${cf.id}" aria-label="Opciones de carpeta ${cf.name.replace(/"/g, '&quot;')}" aria-haspopup="menu" aria-expanded="false" onclick="openFolderContextMenu('${cf.id}', event)" onkeydown="handleFolderMoreKeydown('${cf.id}', event)" title="Opciones de carpeta">
           ${ICONS.more}
-        </div>
+        </button>
       </div>
     `;
   });
@@ -1055,7 +1101,7 @@ window.openNewFolderModal = function(editFolderId = null) {
   let bodyHtml = `
     <div class="ui-control-group">
       <label class="ui-control-label">Nombre de la carpeta</label>
-      <input type="text" id="folderNameInput" class="ui-input" placeholder="Ejemplo 1, Documentos Contables, etc." value="${isEditing ? existingFolder.name : ''}" autofocus />
+      <input type="text" id="folderNameInput" class="ui-input" maxlength="40" placeholder="Ejemplo 1, Documentos Contables, etc. (Máximo 40 caracteres)" value="${isEditing ? existingFolder.name : ''}" autofocus />
     </div>
 
     <div class="ui-control-group">
@@ -1181,13 +1227,17 @@ window.filterToolsInFolderModal = function() {
 
 window.saveCustomFolder = function(folderId = "") {
   const nameInput = document.getElementById("folderNameInput");
-  const name = nameInput ? nameInput.value.trim() : "";
-  if (!name) {
-    showToast("Por favor, ingresa un nombre para la carpeta");
+  const rawName = nameInput ? nameInput.value : "";
+  const validation = validateFolderName(rawName, folderId);
+
+  if (!validation.valid) {
+    showToast(validation.message);
     if (nameInput) nameInput.focus();
     return;
   }
 
+  const name = validation.name;
+  const folderColor = isValidFolderColor(selectedFolderColor) ? selectedFolderColor : "#ea4335";
   const checkedCheckboxes = document.querySelectorAll('#toolsSelectionList input[type="checkbox"]:checked');
   const selectedTools = Array.from(checkedCheckboxes).map(c => c.value);
 
@@ -1196,7 +1246,7 @@ window.saveCustomFolder = function(folderId = "") {
     const folderIndex = customFolders.findIndex(cf => cf.id === folderId);
     if (folderIndex !== -1) {
       customFolders[folderIndex].name = name;
-      customFolders[folderIndex].color = selectedFolderColor;
+      customFolders[folderIndex].color = folderColor;
       customFolders[folderIndex].tools = selectedTools;
       showToast(`Carpeta "${name}" actualizada`);
     }
@@ -1206,7 +1256,7 @@ window.saveCustomFolder = function(folderId = "") {
     customFolders.push({
       id: newId,
       name: name,
-      color: selectedFolderColor,
+      color: folderColor,
       tools: selectedTools
     });
     currentCategory = newId;
@@ -1221,14 +1271,22 @@ window.deleteCustomFolder = function(folderId) {
   const folder = customFolders.find(cf => cf.id === folderId);
   if (!folder) return;
 
-  if (confirm(`¿Estás seguro de que deseas eliminar la carpeta "${folder.name}"? Las herramientas seguirán estando disponibles.`)) {
-    customFolders = customFolders.filter(cf => cf.id !== folderId);
-    if (currentCategory === folderId) {
-      currentCategory = "all";
-    }
-    saveCustomFolders();
-    showToast(`Carpeta "${folder.name}" eliminada`);
+  const count = folder.tools ? folder.tools.length : 0;
+  const toolMsg = count > 0 
+    ? `Contiene ${count} herramienta${count === 1 ? '' : 's'}. Todas seguirán disponibles en la vista general y en sus categorías originales sin perderse.`
+    : `Las herramientas seguirán estando disponibles en la vista general sin perderse.`;
+
+  const isConfirmed = confirm(
+    `¿Deseas eliminar la carpeta "${folder.name}"?\n\n${toolMsg}\n\n¿Confirmar eliminación?`
+  );
+  if (!isConfirmed) return;
+
+  customFolders = customFolders.filter(cf => cf.id !== folderId);
+  if (currentCategory === folderId) {
+    currentCategory = "all";
   }
+  saveCustomFolders();
+  showToast(`Carpeta "${folder.name}" eliminada. Las herramientas se conservaron.`);
 };
 
 window.openAddToolsToFolderModal = function(folderId) {
@@ -1335,54 +1393,99 @@ window.toggleToolInFolderDirect = function(folderId, toolId, chk) {
 };
 
 // ==================== FOLDER CONTEXT MENU & ACTIONS (3 DOTS) ====================
-window.openFolderContextMenu = function(folderId, event) {
+let lastFocusedFolderMoreBtn = null;
+
+window.openFolderContextMenu = function(folderId, event, focusFirstItem = false) {
   if (event) {
     event.stopPropagation();
     event.preventDefault();
   }
+
+  // Cerrar cualquier menú previo sin restaurar foco aún
+  closeFolderContextMenu(false);
+
   currentContextMenuFolderId = folderId;
   const menu = document.getElementById("folderContextMenu");
   if (!menu) return;
 
-  const btn = event?.currentTarget || event?.target;
+  const btn = document.getElementById(`folderMoreBtn_${folderId}`) || event?.currentTarget || event?.target?.closest(".folder-more");
+  lastFocusedFolderMoreBtn = btn || null;
+  if (btn) {
+    btn.setAttribute("aria-expanded", "true");
+  }
+
   const rect = btn ? btn.getBoundingClientRect() : null;
 
   menu.style.display = "block";
   menu.style.visibility = "hidden";
-
-  const menuWidth = menu.offsetWidth || 210;
-  const menuHeight = menu.offsetHeight || 160;
-
-  let left = rect ? rect.right - menuWidth : 100;
-  let top = rect ? rect.bottom + 6 : 100;
-
-  if (left < 10) left = 10;
-  if (left + menuWidth > window.innerWidth - 10) {
-    left = window.innerWidth - menuWidth - 10;
-  }
-  if (top + menuHeight > window.innerHeight - 10) {
-    top = (rect ? rect.top - menuHeight - 6 : top);
-  }
-
-  menu.style.left = `${Math.max(0, left)}px`;
-  menu.style.top = `${Math.max(0, top)}px`;
-  menu.style.visibility = "visible";
 
   const manageOption = document.getElementById("ctxManageToolsOption");
   if (manageOption) {
     const isCustom = folderId && folderId.startsWith("custom_");
     manageOption.style.display = isCustom ? "flex" : "none";
   }
+
+  const menuWidth = menu.offsetWidth || 210;
+  const menuHeight = menu.offsetHeight || 160;
+  const padding = 10;
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+
+  let left = rect ? rect.right - menuWidth : 100;
+  let top = rect ? rect.bottom + 6 : 100;
+
+  // Evitar desborde horizontal (sin corte en bordes de ventana)
+  if (left + menuWidth > viewportWidth - padding) {
+    left = viewportWidth - menuWidth - padding;
+  }
+  if (left < padding) {
+    left = padding;
+  }
+
+  // Evitar desborde vertical (abrir hacia arriba si no cabe abajo)
+  if (top + menuHeight > viewportHeight - padding) {
+    if (rect && rect.top - menuHeight - 6 >= padding) {
+      top = rect.top - menuHeight - 6;
+    } else {
+      top = Math.max(padding, viewportHeight - menuHeight - padding);
+    }
+  }
+
+  menu.style.left = `${Math.round(left)}px`;
+  menu.style.top = `${Math.round(top)}px`;
+  menu.style.visibility = "visible";
+
+  if (focusFirstItem) {
+    setTimeout(() => {
+      const firstItem = menu.querySelector('.context-menu-item:not([style*="display: none"])');
+      if (firstItem) firstItem.focus();
+    }, 20);
+  }
 };
 
-window.closeFolderContextMenu = function() {
+window.closeFolderContextMenu = function(restoreFocus = false) {
   const menu = document.getElementById("folderContextMenu");
   if (menu) menu.style.display = "none";
+
+  if (lastFocusedFolderMoreBtn) {
+    lastFocusedFolderMoreBtn.setAttribute("aria-expanded", "false");
+    if (restoreFocus) {
+      lastFocusedFolderMoreBtn.focus();
+    }
+  }
+};
+
+window.handleFolderMoreKeydown = function(folderId, event) {
+  if (event.key === "Enter" || event.key === " " || event.key === "ArrowDown") {
+    event.preventDefault();
+    event.stopPropagation();
+    openFolderContextMenu(folderId, event, true);
+  }
 };
 
 // 1. Modificar nombre
 window.handleFolderRename = function(folderId) {
-  closeFolderContextMenu();
+  closeFolderContextMenu(false);
   folderId = folderId || currentContextMenuFolderId;
   const folder = getFolderInfo(folderId);
   if (!folder) return;
@@ -1403,17 +1506,24 @@ window.handleFolderRename = function(folderId) {
 window.closeRenameFolderModal = function() {
   const modal = document.getElementById("renameFolderModalBackdrop");
   if (modal) modal.classList.remove("open");
+  if (lastFocusedFolderMoreBtn) {
+    lastFocusedFolderMoreBtn.focus();
+  }
 };
 
 window.confirmRenameFolder = function() {
   const folderId = currentContextMenuFolderId;
   const input = document.getElementById("renameFolderInput");
-  const newName = input ? input.value.trim() : "";
-  if (!newName) {
-    showToast("Por favor, ingresa un nombre para la carpeta");
+  const rawName = input ? input.value : "";
+  const validation = validateFolderName(rawName, folderId);
+
+  if (!validation.valid) {
+    showToast(validation.message);
     if (input) input.focus();
     return;
   }
+
+  const newName = validation.name;
 
   if (folderId && folderId.startsWith("custom_")) {
     const cf = customFolders.find(f => f.id === folderId);
@@ -1434,13 +1544,13 @@ window.confirmRenameFolder = function() {
 
 // 2. Cambiar color
 window.handleFolderChangeColor = function(folderId) {
-  closeFolderContextMenu();
+  closeFolderContextMenu(false);
   folderId = folderId || currentContextMenuFolderId;
   const folder = getFolderInfo(folderId);
   if (!folder) return;
 
   currentContextMenuFolderId = folderId;
-  quickSelectedColor = folder.color || "#ea4335";
+  quickSelectedColor = isValidFolderColor(folder.color) ? folder.color : "#ea4335";
 
   const modal = document.getElementById("changeColorFolderModalBackdrop");
   const icon = document.getElementById("quickColorIcon");
@@ -1459,6 +1569,7 @@ window.handleFolderChangeColor = function(folderId) {
 };
 
 window.selectQuickFolderColor = function(color) {
+  if (!isValidFolderColor(color)) return;
   quickSelectedColor = color;
   document.querySelectorAll("#quickFolderColorPalette .color-dot").forEach(dot => {
     dot.classList.toggle("active", dot.getAttribute("data-color") === color);
@@ -1472,11 +1583,19 @@ window.selectQuickFolderColor = function(color) {
 window.closeChangeColorFolderModal = function() {
   const modal = document.getElementById("changeColorFolderModalBackdrop");
   if (modal) modal.classList.remove("open");
+  if (lastFocusedFolderMoreBtn) {
+    lastFocusedFolderMoreBtn.focus();
+  }
 };
 
 window.confirmChangeColorFolder = function() {
   const folderId = currentContextMenuFolderId;
   if (!folderId) return;
+
+  if (!isValidFolderColor(quickSelectedColor)) {
+    showToast("Color no válido. Selecciona un color de la paleta.");
+    return;
+  }
 
   if (folderId.startsWith("custom_")) {
     const cf = customFolders.find(f => f.id === folderId);
@@ -1496,7 +1615,7 @@ window.confirmChangeColorFolder = function() {
 
 // 3. Gestionar herramientas
 window.handleFolderManageTools = function(folderId) {
-  closeFolderContextMenu();
+  closeFolderContextMenu(false);
   folderId = folderId || currentContextMenuFolderId;
   if (folderId && folderId.startsWith("custom_")) {
     openNewFolderModal(folderId);
@@ -1505,12 +1624,19 @@ window.handleFolderManageTools = function(folderId) {
 
 // 4. Eliminar carpeta
 window.handleFolderDelete = function(folderId) {
-  closeFolderContextMenu();
+  closeFolderContextMenu(false);
   folderId = folderId || currentContextMenuFolderId;
   const folder = getFolderInfo(folderId);
   if (!folder) return;
 
-  const isConfirmed = confirm(`¿Estás seguro de que deseas eliminar la carpeta "${folder.name}"?\nLas herramientas seguirán estando disponibles en la página principal.`);
+  const count = folder.tools ? folder.tools.length : 0;
+  const toolMsg = count > 0 
+    ? `Contiene ${count} herramienta${count === 1 ? '' : 's'}. Todas seguirán disponibles en la vista general y en sus categorías originales sin perderse.`
+    : `Las herramientas seguirán estando disponibles en la vista general sin perderse.`;
+
+  const isConfirmed = confirm(
+    `¿Deseas eliminar la carpeta "${folder.name}"?\n\n${toolMsg}\n\n¿Confirmar eliminación?`
+  );
   if (!isConfirmed) return;
 
   if (folderId.startsWith("custom_")) {
@@ -1527,7 +1653,7 @@ window.handleFolderDelete = function(folderId) {
     setCategory("all");
   }
 
-  showToast(`Carpeta "${folder.name}" eliminada`);
+  showToast(`Carpeta "${folder.name}" eliminada. Las herramientas se conservaron.`);
 };
 
 window.restoreAllFolders = function() {
@@ -1541,27 +1667,136 @@ window.restoreAllFolders = function() {
   showToast("Carpetas predeterminadas restauradas");
 };
 
-// Listeners globales para cerrar menú contextual
+// Listeners globales para cerrar menú contextual (clic fuera, Esc, scroll)
 document.addEventListener("click", (e) => {
   const menu = document.getElementById("folderContextMenu");
   if (menu && menu.style.display !== "none" && !menu.contains(e.target)) {
-    closeFolderContextMenu();
+    closeFolderContextMenu(false);
   }
 });
 
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
-    closeFolderContextMenu();
+    const menu = document.getElementById("folderContextMenu");
+    if (menu && menu.style.display !== "none") {
+      closeFolderContextMenu(true);
+    }
   }
 });
 
-// Listener tecla Enter para input de renombrar
+window.addEventListener("scroll", () => {
+  const menu = document.getElementById("folderContextMenu");
+  if (menu && menu.style.display !== "none") {
+    closeFolderContextMenu(false);
+  }
+}, { capture: true, passive: true });
+
+// Navegación con teclado dentro del menú contextual de 3 puntos
 document.addEventListener("DOMContentLoaded", () => {
+  const menu = document.getElementById("folderContextMenu");
+  if (menu) {
+    menu.addEventListener("keydown", (e) => {
+      const visibleItems = Array.from(menu.querySelectorAll('.context-menu-item'))
+        .filter(item => item.style.display !== "none" && item.offsetParent !== null);
+      if (!visibleItems.length) return;
+
+      const activeIndex = visibleItems.indexOf(document.activeElement);
+
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        const nextIndex = activeIndex < visibleItems.length - 1 ? activeIndex + 1 : 0;
+        visibleItems[nextIndex]?.focus();
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        const prevIndex = activeIndex > 0 ? activeIndex - 1 : visibleItems.length - 1;
+        visibleItems[prevIndex]?.focus();
+      } else if (e.key === "Home") {
+        e.preventDefault();
+        visibleItems[0]?.focus();
+      } else if (e.key === "End") {
+        e.preventDefault();
+        visibleItems[visibleItems.length - 1]?.focus();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        closeFolderContextMenu(true);
+      } else if (e.key === "Tab") {
+        closeFolderContextMenu(false);
+      } else if (e.key === "Enter" || e.key === " ") {
+        if (document.activeElement && document.activeElement.classList.contains("context-menu-item")) {
+          e.preventDefault();
+          document.activeElement.click();
+        }
+      }
+    });
+  }
+
+  // Listener tecla Enter para input de renombrar
   const renameInput = document.getElementById("renameFolderInput");
   if (renameInput) {
     renameInput.addEventListener("keydown", (e) => {
       if (e.key === "Enter") confirmRenameFolder();
     });
+  }
+});
+
+// ==================== MULTI-TAB STORAGE SYNCHRONIZATION ====================
+window.addEventListener("storage", (e) => {
+  if (!e.key) return;
+
+  switch (e.key) {
+    case "tooldrive_custom_folders":
+      try {
+        customFolders = JSON.parse(e.newValue || "[]");
+        renderSidebarNav();
+        renderFolders();
+        renderTools();
+      } catch (err) {
+        console.error("Error al sincronizar carpetas personalizadas:", err);
+      }
+      break;
+
+    case "tooldrive_default_folder_overrides":
+      try {
+        defaultFolderOverrides = JSON.parse(e.newValue || "{}");
+        renderSidebarNav();
+        renderFolders();
+        renderTools();
+      } catch (err) {
+        console.error("Error al sincronizar modificaciones de carpetas predeterminadas:", err);
+      }
+      break;
+
+    case "tooldrive_hidden_folders":
+      try {
+        hiddenFolders = JSON.parse(e.newValue || "[]");
+        renderSidebarNav();
+        renderFolders();
+        renderTools();
+      } catch (err) {
+        console.error("Error al sincronizar carpetas ocultas:", err);
+      }
+      break;
+
+    case "tooldrive_favorites":
+      try {
+        favorites = JSON.parse(e.newValue || "[]");
+        renderTools();
+        renderSidebarNav();
+      } catch (err) {
+        console.error("Error al sincronizar favoritos:", err);
+      }
+      break;
+
+    case "tooldrive_recents":
+      try {
+        recentTools = JSON.parse(e.newValue || "[]");
+        if (currentCategory === "recents") {
+          renderTools();
+        }
+      } catch (err) {
+        console.error("Error al sincronizar recientes:", err);
+      }
+      break;
   }
 });
 

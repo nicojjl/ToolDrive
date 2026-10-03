@@ -580,14 +580,21 @@ body.dark-theme .moon-icon {
   cursor: pointer;
   transition: background-color 0.15s ease, color 0.15s ease;
   flex-shrink: 0;
+  background: transparent;
+  border: none;
+  padding: 0;
 }
 
-.folder-more:hover {
+.folder-more:hover,
+.folder-more:focus-visible {
   background-color: rgba(0, 0, 0, 0.08);
   color: var(--md-sys-color-on-surface);
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 1px;
 }
 
-body.dark-theme .folder-more:hover {
+body.dark-theme .folder-more:hover,
+body.dark-theme .folder-more:focus-visible {
   background-color: rgba(255, 255, 255, 0.12);
   color: #ffffff;
 }
@@ -1637,8 +1644,11 @@ body.dark-theme .tool-checkbox-item.checked {
   transition: background-color 0.15s ease;
 }
 
-.context-menu-item:hover {
+.context-menu-item:hover,
+.context-menu-item:focus,
+.context-menu-item:focus-visible {
   background-color: var(--md-sys-color-surface-hover);
+  outline: none;
 }
 
 .context-menu-item svg {
@@ -1649,8 +1659,11 @@ body.dark-theme .tool-checkbox-item.checked {
   color: #ea4335;
 }
 
-.context-menu-item.danger:hover {
+.context-menu-item.danger:hover,
+.context-menu-item.danger:focus,
+.context-menu-item.danger:focus-visible {
   background-color: rgba(234, 67, 53, 0.1);
+  outline: none;
 }
 
 .context-menu-divider {
@@ -1665,7 +1678,9 @@ body.dark-theme .drive-context-menu {
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.65);
 }
 
-body.dark-theme .context-menu-item:hover {
+body.dark-theme .context-menu-item:hover,
+body.dark-theme .context-menu-item:focus,
+body.dark-theme .context-menu-item:focus-visible {
   background-color: #333538;
 }
 
