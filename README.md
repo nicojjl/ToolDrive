@@ -39,9 +39,9 @@ Luego visita `http://localhost:8000` en tu navegador.
 
 ---
 
-## 🛠️ Estado Real de las Herramientas (22 Activas / 8 en Desarrollo)
+## 🛠️ Estado Real de las Herramientas (24 Activas / 6 en Desarrollo)
 
-De un total de 30 herramientas catalogadas, ToolDrive clasifica de forma transparente sus módulos: **22 herramientas activas con procesamiento real local** y **8 herramientas deshabilitadas temporalmente con insignia "Próximamente"** mientras se integran sus motores WASM correspondientes.
+De un total de 30 herramientas catalogadas, ToolDrive clasifica de forma transparente sus módulos: **24 herramientas activas con procesamiento real local** y **6 herramientas deshabilitadas temporalmente con insignia "Próximamente"** mientras se integran sus motores WASM correspondientes.
 
 ### 1. Herramientas Activas con Procesamiento REAL (100% Client-Side)
 
@@ -51,6 +51,8 @@ De un total de 30 herramientas catalogadas, ToolDrive clasifica de forma transpa
 | **Split PDF (Dividir PDF)** | PDF | PDF-LIB (`pdf-lib.min.js`) | Carga el documento, lee páginas y extrae rangos o páginas individuales generando un nuevo PDF válido en memoria. |
 | **PDF to JPEG** | PDF | PDF.js (`libs/pdfjs/`) + JSZip (`libs/jszip/`) | Renderizado de páginas PDF a imágenes JPEG en alta definición (escala 1x, 2x, 3x y calidad configurable), descarga individual o empaquetada en ZIP, y detección de documentos protegidos con contraseña. |
 | **Compress PDF** | PDF | PDF.js + PDF-LIB | Compresión y optimización mediante rasterización de páginas a JPEG con control de DPI (100, 150, 200 DPI) y calidad, aviso explícito de pérdida de selección de texto y comparador de tamaño con alerta si no reduce el peso. |
+| **Unlock PDF (Desbloquear PDF)** | PDF | qpdf WASM (`libs/qpdf/`) + PDF.js | Eliminación de restricciones de impresión, copia o edición cuando no hay contraseña de apertura; solicitud de contraseña conocida cuando el PDF está cifrado; descifrado criptográfico local sin adivinación ni envío a servidores externos. Aviso visible de uso exclusivo con documentos propios o autorizados. |
+| **Doc to PDF / PDF to Doc** | PDF | Mammoth.js (`libs/mammoth/`), html2pdf.js (`libs/html2pdf/`), PDF.js y docx (`libs/docx/`) | Dos modos integrados: (a) DOCX a PDF: Mammoth renderiza HTML a lienzo/PDF A4 con previsualización e impresión nativa; (b) PDF a DOCX: extracción de texto página a página con PDF.js y ensamblado de archivo `.docx` estructurado con la librería `docx`. Aviso honesto sobre simplificación de maquetaciones complejas. |
 | **Sign PDF (Firmar PDF)** | PDF | Canvas 2D + PDF-LIB | Captura de trazo digital táctil/ratón; exporta PNG transparente o estampa firma en PDF respetando la orientación y rotación angular de página (0°, 90°, 180°, 270°). |
 | **OCR (Texto desde imagen)** | Texto | Tesseract.js (WASM local) | Extracción de caracteres 100% offline alojada en `/ocr-assets`, modelos locales español e inglés, copia con fallback seguro y descarga `.txt`. |
 | **HEIC to JPG** | Imágenes | heic2any (`libs/heic2any/`) + JSZip (`libs/jszip/`) | Decodificación local de fotografías Apple (HEIC/HEIF) a JPEG con selector de calidad (50% a 100%), soporte de archivos múltiples simultáneos y exportación individual o en lote ZIP. |
@@ -70,12 +72,10 @@ De un total de 30 herramientas catalogadas, ToolDrive clasifica de forma transpa
 | **Case Converter** | Texto | JavaScript nativo | Transformación de cadenas a Mayúsculas, Minúsculas, Título, camelCase, snake_case, kebab-case, etc. |
 | **Lorem Ipsum Generator** | Texto | JavaScript nativo | Generación paramétrica estructurada de párrafos, oraciones o palabras simuladas. |
 
-### 2. Herramientas Deshabilitadas Honestamente con Aviso "Próximamente" (8)
+### 2. Herramientas Deshabilitadas Honestamente con Aviso "Próximamente" (6)
 
-Las siguientes 8 herramientas complejas no están simuladas con temporizadores ni generan descargas ficticias; muestran la insignia **"Próximamente"** en la interfaz y despliegan una explicación técnica de la dependencia local requerida:
+Las siguientes 6 herramientas complejas no están simuladas con temporizadores ni generan descargas ficticias; muestran la insignia **"Próximamente"** en la interfaz y despliegan una explicación técnica de la dependencia local requerida:
 
-- **Doc to PDF / PDF to Doc**: Requiere un motor tipográfico y maquetador de archivos Word (.docx) para ejecutarse en el navegador sin intermediarios.
-- **Unlock PDF**: Requiere motor criptográfico para eliminación de contraseñas de lectura y permisos en documentos PDF.
 - **Remove Background**: Requiere un modelo local de segmentación de imágenes por visión computacional (MediaPipe / TensorFlow.js ~40 MB).
 - **Video to MP3, MP4 to GIF, Video Compressor, Audio Converter, Video Cutter**: Muestran un reproductor HTML5 funcional del archivo cargado, indicando que la transcodificación y compresión local requiere el motor `FFmpeg.wasm` (~30 MB).
 
@@ -105,6 +105,22 @@ Las siguientes 8 herramientas complejas no están simuladas con temporizadores n
 
 ToolDrive utiliza las siguientes librerías de software libre y código abierto:
 
+- **qpdf-wasm** (v0.0.2, en `/libs/qpdf`):
+  - Licencia: **Apache License 2.0**
+  - Copyright © 2022 @jspawn y Jay Berkenbilt (QPDF).
+  - Repositorio: [https://github.com/jspawn/qpdf-wasm](https://github.com/jspawn/qpdf-wasm)
+- **Mammoth.js** (v1.13.0, en `/libs/mammoth`):
+  - Licencia: **BSD-2-Clause**
+  - Copyright © 2013-2024 Michael Searle.
+  - Repositorio: [https://github.com/mwilliamson/mammoth.js](https://github.com/mwilliamson/mammoth.js)
+- **docx** (v9.8.1, en `/libs/docx`):
+  - Licencia: **MIT License**
+  - Copyright © 2016-2024 Dolan Miu.
+  - Repositorio: [https://github.com/dolanmiu/docx](https://github.com/dolanmiu/docx)
+- **html2pdf.js** (v0.10.2, en `/libs/html2pdf`):
+  - Licencia: **MIT License**
+  - Copyright © 2017-2021 Erik Koopmans.
+  - Repositorio: [https://github.com/eKoopmans/html2pdf.js](https://github.com/eKoopmans/html2pdf.js)
 - **Tesseract.js** (v5.1.1, worker y binarios WASM en `/ocr-assets`):
   - Licencia: **Apache License 2.0**
   - Copyright © 2018 Jerome Wu y colaboradores.
@@ -140,7 +156,9 @@ ToolDrive utiliza las siguientes librerías de software libre y código abierto:
 
 | Tarea / Módulo | Estado Previo | Cambio | Probado en navegador |
 |---|---|---|---|
-| **Clasificación Real vs Mocks** | Varias herramientas simulaban procesamiento con `setTimeout` y descargas de texto estático. | Eliminación de simulaciones; separación explícita de 22 herramientas activas con procesamiento real y 8 deshabilitadas con aviso "Próximamente". | Sí |
+| **Clasificación Real vs Mocks** | Varias herramientas simulaban procesamiento con `setTimeout` y descargas de texto estático. | Eliminación de simulaciones; separación explícita de 24 herramientas activas con procesamiento real y 6 deshabilitadas con aviso "Próximamente". | Sí |
+| **FASE 2: Unlock PDF** | Deshabilitada con aviso "Próximamente". | Implementada con qpdf compilado a WebAssembly (`@jspawn/qpdf-wasm` Apache-2.0); remueve restricciones en PDFs sin contraseña de apertura y solicita clave legítima en documentos protegidos. Descifrado criptográfico local sin fuerza bruta y aviso de privacidad visible. | Sí |
+| **FASE 2: Doc to PDF / PDF to Doc** | Deshabilitada con aviso "Próximamente". | Implementada con dos modos locales: (a) DOCX a PDF mediante Mammoth.js + html2pdf.js con previsualización en vivo e impresión controlada; (b) PDF a DOCX mediante PDF.js + docx con extracción de texto y empaquetado de archivo Word nativo. Aviso claro de simplificación de maquetaciones complejas. | Sí |
 | **FASE 1: PDF to JPEG** | Deshabilitada con aviso "Próximamente". | Implementada con PDF.js (worker local) + JSZip; soporta escalas 1x/2x/3x, calidad JPEG, descarga individual o ZIP, detección de contraseñas y cancelación. | Sí |
 | **FASE 1: HEIC to JPG** | Deshabilitada con aviso "Próximamente". | Implementada con heic2any + JSZip locales; soporta subida múltiple, slider de calidad, descarga individual o ZIP y manejo de contenedores multi-imagen. | Sí |
 | **FASE 1: Upscale Image** | Deshabilitada con aviso "Próximamente". | Implementada con Pica local (Lanczos3 + Unsharp Mask); factores 2x y 4x, límite de 16384 px y 33 MP, rotulado honesto de interpolación sin IA generativa. | Sí |

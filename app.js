@@ -37,12 +37,11 @@ const TOOLS = [
     category: "pdf",
     categoryName: "Gestión de PDF",
     title: "Doc to PDF / PDF to Doc",
-    desc: "Convierte documentos de Word (.docx) a formato PDF o viceversa manteniendo formato y tablas.",
-    reason: "Conversión de alta precisión de oficina",
+    desc: "Convierte documentos DOCX a PDF (con maquetación A4 o impresión) y extrae texto de PDF a DOCX sin enviar archivos a servidores.",
+    reason: "Conversión bidireccional de oficina en tu navegador",
     location: "PDFs y Documentos",
-    formats: ".docx, .pdf",
-    iconType: "doc",
-    disabled: true
+    formats: ".docx ↔ .pdf",
+    iconType: "doc"
   },
   {
     id: "merge-pdf",
@@ -104,12 +103,11 @@ const TOOLS = [
     category: "pdf",
     categoryName: "Gestión de PDF",
     title: "Unlock PDF (Desbloquear PDF)",
-    desc: "Elimina contraseñas, permisos de impresión restringidos y protecciones de tus archivos PDF.",
-    reason: "Desbloqueo de documentos protegidos",
+    desc: "Remueve restricciones de copia, edición e impresión mediante qpdf WASM, o desbloquea con tu contraseña conocida sin servidores.",
+    reason: "Desbloqueo seguro y remoción de permisos locales",
     location: "PDFs y Documentos",
     formats: ".pdf",
-    iconType: "pdf",
-    disabled: true
+    iconType: "pdf"
   },
 
   // --- Categoría 2: Edición y Conversión de Imágenes ---
@@ -471,6 +469,37 @@ async function ensureHeic2AnyReady() {
 async function ensurePicaReady() {
   if (typeof window.pica === "undefined") {
     await loadScriptAsync("libs/pica/pica.min.js");
+  }
+}
+
+async function ensureQpdfReady() {
+  if (typeof window.createQpdfInstance === "undefined") {
+    await loadScriptAsync("libs/qpdf/qpdf.js");
+    const qpdfFactory = window.Module;
+    window.createQpdfInstance = async (options = {}) => {
+      return await qpdfFactory({
+        locateFile: (f) => new URL("libs/qpdf/" + f, window.location.href).href,
+        ...options
+      });
+    };
+  }
+}
+
+async function ensureMammothReady() {
+  if (typeof window.mammoth === "undefined") {
+    await loadScriptAsync("libs/mammoth/mammoth.browser.min.js");
+  }
+}
+
+async function ensureHtml2PdfReady() {
+  if (typeof window.html2pdf === "undefined") {
+    await loadScriptAsync("libs/html2pdf/html2pdf.bundle.min.js");
+  }
+}
+
+async function ensureDocxReady() {
+  if (typeof window.docx === "undefined") {
+    await loadScriptAsync("libs/docx/docx.iife.js");
   }
 }
 
@@ -1318,6 +1347,8 @@ window.closeToolModal = function() {
   if (typeof window.cancelHeicConvert === "function") try { window.cancelHeicConvert(); } catch (e) {}
   if (typeof window.cancelUpscale === "function") try { window.cancelUpscale(); } catch (e) {}
   if (typeof window.cancelCompressPdf === "function") try { window.cancelCompressPdf(); } catch (e) {}
+  if (typeof window.cancelUnlockPdf === "function") try { window.cancelUnlockPdf(); } catch (e) {}
+  if (typeof window.cancelDocToPdf === "function") try { window.cancelDocToPdf(); } catch (e) {}
   // Clean any active object URLs created inside tool modals
   revokeAllModalObjectUrls();
 
@@ -4636,25 +4667,788 @@ function buildToolWorkspace(tool, container, footer) {
       break;
     }
 
-    // ---------------- HERRAMIENTAS EN DESARROLLO (PDF & IMÁGENES COMPLEJAS) ----------------
-    case "doc-to-pdf":
-    case "unlock-pdf":
-    case "remove-bg": {
-      let explanation = "";
-      if (tool.id === "doc-to-pdf") {
-        explanation = "La conversión directa de archivos Word (.doc/.docx) a PDF requiere un motor de maquetación avanzada que actualmente se encuentra en desarrollo para ejecutarse 100% en el cliente sin servidores externos.";
-      } else if (tool.id === "unlock-pdf") {
-        explanation = "La remoción de restricciones y descifrado de seguridad criptográfica de documentos PDF estará disponible en la próxima actualización.";
-      } else if (tool.id === "remove-bg") {
-        explanation = "La segmentación inteligente de sujetos y eliminación de fondo requiere un modelo de visión por computadora local (MediaPipe / TensorFlow.js ~40 MB) en preparación para no enviar tus fotos a servidores externos.";
+    // ---------------- FASE 2: UNLOCK PDF (qpdf WASM) ----------------
+    case "unlock-pdf": {
+      container.innerHTML = `
+        <div class="ui-dropzone" id="unlockPdfDropzone" onclick="document.getElementById('unlockPdfInput').click()">
+          <input type="file" id="unlockPdfInput" style="display: none;" accept=".pdf,application/pdf">
+          <div class="ui-dropzone-icon">${ICONS.pdf}</div>
+          <div class="ui-dropzone-title">Selecciona o arrastra tu archivo PDF protegido</div>
+          <div class="ui-dropzone-sub">Elimina restricciones de impresión/copia o desbloquea con tu contraseña conocida</div>
+        </div>
+
+        <div id="unlockPdfWorkArea" style="display: none;">
+          <div style="background: var(--md-sys-color-surface-variant); border-radius: 12px; padding: 14px 16px; margin-bottom: 14px; border: 1px solid var(--md-sys-color-outline-variant);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+              <strong id="unlockPdfFileName" style="font-size: 14px; word-break: break-all;"></strong>
+              <button class="ui-btn ui-btn-outlined" style="padding: 4px 10px; font-size: 11px; height: auto;" onclick="resetUnlockPdf()">Cambiar PDF</button>
+            </div>
+            <div id="unlockPdfFileInfo" style="font-size: 12px; color: var(--md-sys-color-on-surface-variant);"></div>
+          </div>
+
+          <div style="background: #e8f0fe; color: #1a73e8; border-radius: 10px; padding: 10px 12px; font-size: 11px; line-height: 1.4; margin-bottom: 14px; display: flex; gap: 8px; align-items: flex-start; border: 1px solid #d2e3fc;">
+            <span>ℹ️</span>
+            <div>
+              <strong>Aviso de uso autorizado:</strong> Usa esta herramienta solo con documentos tuyos o con permiso explícito del propietario. ToolDrive procesa todo 100% en tu navegador y no almacena copias ni contraseñas.
+            </div>
+          </div>
+
+          <div id="unlockPdfStatusBadge" style="border-radius: 10px; padding: 10px 12px; font-size: 12px; line-height: 1.4; margin-bottom: 14px; display: flex; gap: 8px; align-items: center;"></div>
+
+          <div id="unlockPdfPasswordBlock" style="margin-bottom: 16px; display: none;">
+            <label for="unlockPdfPassword" style="font-size: 12px; font-weight: 500; display: block; margin-bottom: 4px;">Contraseña de apertura del documento:</label>
+            <div style="position: relative;">
+              <input type="password" id="unlockPdfPassword" class="ui-input" style="width: 100%; padding-right: 40px;" placeholder="Ingresa la contraseña conocida del PDF...">
+              <button type="button" id="btnToggleUnlockPwd" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; font-size: 16px; padding: 4px;" aria-label="Mostrar u ocultar contraseña">👁️</button>
+            </div>
+            <div style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); margin-top: 4px;">
+              Nunca intentes adivinar contraseñas ajenas. Se requiere la clave legítima asignada por el emisor.
+            </div>
+          </div>
+
+          <div id="unlockPdfProgressWrap" style="display: none; margin-top: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; margin-bottom: 6px;">
+              <span id="unlockPdfStatusText">Inicializando motor de descifrado qpdf WASM...</span>
+              <span id="unlockPdfPercent" style="font-weight: 600;">0%</span>
+            </div>
+            <div style="background: var(--md-sys-color-surface-variant); border-radius: 8px; height: 8px; overflow: hidden;">
+              <div id="unlockPdfBarFill" style="background: var(--md-sys-color-primary); height: 100%; width: 0%; transition: width 0.15s ease;"></div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      footer.innerHTML = `
+        <button class="ui-btn ui-btn-outlined" id="btnCancelUnlockPdf" onclick="closeToolModal()">Cancelar</button>
+        <button class="ui-btn ui-btn-primary" id="btnExecUnlockPdf" disabled onclick="executeUnlockPdf()">Desbloquear PDF</button>
+      `;
+
+      const dropzone = document.getElementById("unlockPdfDropzone");
+      const fileInput = document.getElementById("unlockPdfInput");
+      const workArea = document.getElementById("unlockPdfWorkArea");
+      const btnExec = document.getElementById("btnExecUnlockPdf");
+      const pwdBlock = document.getElementById("unlockPdfPasswordBlock");
+      const pwdInput = document.getElementById("unlockPdfPassword");
+      const pwdToggle = document.getElementById("btnToggleUnlockPwd");
+      const statusBadge = document.getElementById("unlockPdfStatusBadge");
+
+      let loadedUnlockFile = null;
+      let isUnlockCancelled = false;
+      let pdfRequiresPassword = false;
+
+      window.cancelUnlockPdf = function() {
+        isUnlockCancelled = true;
+      };
+
+      window.resetUnlockPdf = function() {
+        isUnlockCancelled = true;
+        loadedUnlockFile = null;
+        pdfRequiresPassword = false;
+        fileInput.value = "";
+        pwdInput.value = "";
+        workArea.style.display = "none";
+        dropzone.style.display = "block";
+        btnExec.setAttribute("disabled", "true");
+        document.getElementById("unlockPdfProgressWrap").style.display = "none";
+      };
+
+      pwdToggle.addEventListener("click", () => {
+        if (pwdInput.type === "password") {
+          pwdInput.type = "text";
+          pwdToggle.innerText = "🙈";
+        } else {
+          pwdInput.type = "password";
+          pwdToggle.innerText = "👁️";
+        }
+      });
+
+      async function handleUnlockPdfFile(file) {
+        if (!file) return;
+        if (!file.name.toLowerCase().endsWith(".pdf") && file.type !== "application/pdf") {
+          showToast("Por favor selecciona un archivo PDF válido");
+          return;
+        }
+
+        try {
+          showToast("Analizando protecciones del PDF...");
+          await ensurePdfJsReady();
+
+          let pageCount = 0;
+          pdfRequiresPassword = false;
+
+          try {
+            const buffer = await file.arrayBuffer();
+            const loadingTask = window.pdfjsLib.getDocument({ data: buffer });
+            let passwordAttempts = 0;
+            loadingTask.onPassword = (updatePassword, reason) => {
+              passwordAttempts++;
+              if (passwordAttempts > 1) {
+                pdfRequiresPassword = true;
+                try { loadingTask.destroy(); } catch (e) {}
+                return;
+              }
+              // Attempt with empty password to check if open password is required or only restrictions
+              if (typeof updatePassword === "function") {
+                try { updatePassword(""); } catch (e) {}
+              }
+            };
+            try {
+              const doc = await loadingTask.promise;
+              pageCount = doc.numPages;
+              pdfRequiresPassword = false;
+            } catch (pErr) {
+              if (passwordAttempts > 1 || (pErr && (pErr.name === "PasswordException" || (pErr.message && pErr.message.toLowerCase().includes("password"))))) {
+                pdfRequiresPassword = true;
+              }
+            }
+          } catch (err) {
+            if (err && (err.name === "PasswordException" || (err.message && err.message.toLowerCase().includes("password")))) {
+              pdfRequiresPassword = true;
+            }
+          }
+
+          loadedUnlockFile = file;
+          dropzone.style.display = "none";
+          workArea.style.display = "block";
+          document.getElementById("unlockPdfFileName").textContent = file.name;
+          document.getElementById("unlockPdfFileInfo").innerText = `${pageCount > 0 ? pageCount + ' página(s) • ' : ''}${formatFileSize(file.size)}`;
+
+          if (pdfRequiresPassword) {
+            statusBadge.style.background = "#fef7e0";
+            statusBadge.style.color = "#7c4a00";
+            statusBadge.style.border = "1px solid #fce8b2";
+            statusBadge.innerHTML = `<span>🔒</span> <div><strong>Protección de apertura detectada:</strong> Este documento está cifrado y requiere contraseña para poder abrirse. Ingrésala abajo para remover las restricciones permanentemente.</div>`;
+            pwdBlock.style.display = "block";
+            pwdInput.value = "";
+            setTimeout(() => pwdInput.focus(), 150);
+          } else {
+            statusBadge.style.background = "#e6f4ea";
+            statusBadge.style.color = "#137333";
+            statusBadge.style.border = "1px solid #ceead6";
+            statusBadge.innerHTML = `<span>🔓</span> <div><strong>Sin contraseña de apertura:</strong> El documento puede abrirse pero contiene restricciones de copia, impresión o edición. Se removerán mediante qpdf WASM sin necesidad de ingresar contraseña.</div>`;
+            pwdBlock.style.display = "none";
+            pwdInput.value = "";
+          }
+
+          btnExec.removeAttribute("disabled");
+          showToast("PDF listo para desbloquear");
+        } catch (err) {
+          console.error("Error al inspeccionar PDF:", err);
+          showToast("No se pudo inspeccionar el documento. Comprueba que sea válido.");
+        }
       }
 
+      fileInput.addEventListener("change", (e) => handleUnlockPdfFile(e.target.files[0]));
+      dropzone.addEventListener("dragover", (e) => { e.preventDefault(); dropzone.classList.add("dragover"); });
+      dropzone.addEventListener("dragleave", () => dropzone.classList.remove("dragover"));
+      dropzone.addEventListener("drop", (e) => {
+        e.preventDefault();
+        dropzone.classList.remove("dragover");
+        if (e.dataTransfer.files.length) handleUnlockPdfFile(e.dataTransfer.files[0]);
+      });
+
+      window.executeUnlockPdf = async function() {
+        if (!loadedUnlockFile) return;
+
+        const password = pwdInput.value;
+        if (pdfRequiresPassword && !password.trim()) {
+          showToast("Por favor ingresa la contraseña para desbloquear este PDF");
+          pwdInput.focus();
+          return;
+        }
+
+        const progressWrap = document.getElementById("unlockPdfProgressWrap");
+        const barFill = document.getElementById("unlockPdfBarFill");
+        const percentText = document.getElementById("unlockPdfPercent");
+        const statusText = document.getElementById("unlockPdfStatusText");
+        const btnCancel = document.getElementById("btnCancelUnlockPdf");
+
+        isUnlockCancelled = false;
+        progressWrap.style.display = "block";
+        btnExec.setAttribute("disabled", "true");
+        btnCancel.innerText = "Detener";
+        btnCancel.onclick = () => {
+          isUnlockCancelled = true;
+          statusText.innerText = "Cancelando...";
+        };
+
+        barFill.style.width = "20%";
+        percentText.innerText = "20%";
+        statusText.innerText = "Cargando motor criptográfico qpdf WASM...";
+
+        try {
+          await ensureQpdfReady();
+          if (isUnlockCancelled) throw new Error("CANCELLED");
+
+          barFill.style.width = "40%";
+          percentText.innerText = "40%";
+          statusText.innerText = "Preparando entorno de descifrado...";
+
+          let capturedStdout = [];
+          let capturedStderr = [];
+
+          const qpdf = await window.createQpdfInstance({
+            print: (t) => capturedStdout.push(t),
+            printErr: (t) => capturedStderr.push(t)
+          });
+
+          if (isUnlockCancelled) throw new Error("CANCELLED");
+
+          barFill.style.width = "60%";
+          percentText.innerText = "60%";
+          statusText.innerText = "Desencriptando y removiendo restricciones...";
+
+          const fileBytes = await loadedUnlockFile.arrayBuffer();
+          const inPath = "/unlock_input.pdf";
+          const outPath = "/unlock_output.pdf";
+
+          try { qpdf.FS.unlink(inPath); } catch (e) {}
+          try { qpdf.FS.unlink(outPath); } catch (e) {}
+
+          qpdf.FS.writeFile(inPath, new Uint8Array(fileBytes));
+
+          const args = ["--decrypt"];
+          if (password) {
+            args.push(`--password=${password}`);
+          }
+          args.push(inPath, outPath);
+
+          try {
+            qpdf.callMain(args);
+          } catch (callErr) {
+            // qpdf may throw on non-zero exit or normal program exit
+          }
+
+          if (isUnlockCancelled) throw new Error("CANCELLED");
+
+          let decryptedData = null;
+          try {
+            decryptedData = qpdf.FS.readFile(outPath);
+          } catch (readErr) {
+            decryptedData = null;
+          }
+
+          if (!decryptedData || decryptedData.length === 0) {
+            const stderrMsg = capturedStderr.join("\n").toLowerCase();
+            if (stderrMsg.includes("password") || stderrMsg.includes("invalid") || stderrMsg.includes("incorrect")) {
+              throw new Error("Contraseña incorrecta. Verifica la clave ingresada e inténtalo nuevamente.");
+            } else if (stderrMsg.includes("already unencrypted") || stderrMsg.includes("not encrypted")) {
+              throw new Error("Este PDF no contiene cifrado ni restricciones activas.");
+            } else {
+              throw new Error("No se pudo descifrar el documento: " + (capturedStderr[0] || "error en qpdf"));
+            }
+          }
+
+          barFill.style.width = "90%";
+          percentText.innerText = "90%";
+          statusText.innerText = "Descargando PDF desbloqueado...";
+
+          const outBlob = new Blob([decryptedData], { type: "application/pdf" });
+
+          try { qpdf.FS.unlink(inPath); } catch (e) {}
+          try { qpdf.FS.unlink(outPath); } catch (e) {}
+
+          const baseName = loadedUnlockFile.name.replace(/\.[^/.]+$/, "");
+          const blobUrl = URL.createObjectURL(outBlob);
+          const a = document.createElement("a");
+          a.download = `${baseName}-desbloqueado.pdf`;
+          a.href = blobUrl;
+          a.click();
+          setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+
+          barFill.style.width = "100%";
+          percentText.innerText = "100%";
+          statusText.innerText = "¡PDF desbloqueado!";
+          showToast("✓ ¡Documento PDF desbloqueado y descargado!");
+          setTimeout(() => closeToolModal(), 700);
+        } catch (err) {
+          if (err && err.message === "CANCELLED") {
+            showToast("Desbloqueo cancelado");
+          } else {
+            console.error("Error en unlock-pdf:", err);
+            showToast(err && err.message ? err.message : "Error al desbloquear el archivo PDF");
+          }
+        } finally {
+          btnExec.removeAttribute("disabled");
+          btnCancel.innerText = "Cerrar";
+          btnCancel.onclick = () => closeToolModal();
+        }
+      };
+      break;
+    }
+
+    // ---------------- FASE 2: DOC TO PDF / PDF TO DOC (MAMMOTH + DOCX) ----------------
+    case "doc-to-pdf": {
+      container.innerHTML = `
+        <div style="display: flex; gap: 8px; margin-bottom: 14px; background: var(--md-sys-color-surface-variant); padding: 4px; border-radius: 12px;">
+          <button id="docModeDocxToPdf" class="ui-btn ui-btn-primary" style="flex: 1; font-size: 13px; height: 36px;" onclick="switchDocMode('docx-to-pdf')">
+            📄 DOCX a PDF
+          </button>
+          <button id="docModePdfToDocx" class="ui-btn ui-btn-outlined" style="flex: 1; font-size: 13px; height: 36px; border: none;" onclick="switchDocMode('pdf-to-docx')">
+            📑 PDF a DOCX
+          </button>
+        </div>
+
+        <div style="background: #fef7e0; color: #7c4a00; border-radius: 10px; padding: 10px 12px; font-size: 11px; line-height: 1.4; margin-bottom: 14px; display: flex; gap: 8px; align-items: flex-start; border: 1px solid #fce8b2;">
+          <span>⚠️</span>
+          <div>
+            <strong>Aviso de conversión client-side:</strong> La conversión procesa textos, títulos, párrafos y formatos estándar. Las maquetaciones complejas (tablas anidadas, columnas múltiples, fuentes personalizadas) pueden simplificarse. No garantiza formato 100% idéntico.
+          </div>
+        </div>
+
+        <!-- MODO 1: DOCX A PDF -->
+        <div id="docxToPdfSection">
+          <div class="ui-dropzone" id="docxToPdfDropzone" onclick="document.getElementById('docxToPdfInput').click()">
+            <input type="file" id="docxToPdfInput" style="display: none;" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+            <div class="ui-dropzone-icon">${ICONS.doc}</div>
+            <div class="ui-dropzone-title">Selecciona o arrastra tu archivo Word (.docx)</div>
+            <div class="ui-dropzone-sub">Convierte el contenido a PDF maquetado o prepáralo para imprimir</div>
+          </div>
+
+          <div id="docxToPdfWorkArea" style="display: none;">
+            <div style="background: var(--md-sys-color-surface-variant); border-radius: 12px; padding: 12px 16px; margin-bottom: 12px; border: 1px solid var(--md-sys-color-outline-variant); display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <strong id="docxToPdfFileName" style="font-size: 13px; word-break: break-all;"></strong>
+                <div id="docxToPdfFileInfo" style="font-size: 11px; color: var(--md-sys-color-on-surface-variant);"></div>
+              </div>
+              <button class="ui-btn ui-btn-outlined" style="padding: 4px 10px; font-size: 11px; height: auto;" onclick="resetDocxToPdf()">Cambiar archivo</button>
+            </div>
+
+            <div style="margin-bottom: 12px;">
+              <div style="font-size: 12px; font-weight: 600; margin-bottom: 6px;">Vista previa del documento convertido:</div>
+              <div id="docxPreviewBox" style="background: #ffffff; color: #111111; border-radius: 8px; border: 1px solid var(--md-sys-color-outline-variant); padding: 20px; max-height: 200px; overflow-y: auto; font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px; line-height: 1.5; box-shadow: inset 0 1px 3px rgba(0,0,0,0.06);"></div>
+            </div>
+
+            <div style="display: flex; gap: 8px; justify-content: flex-end; margin-bottom: 10px;">
+              <button class="ui-btn ui-btn-outlined" id="btnPrintDocxHtml" onclick="printDocxHtml()" style="font-size: 12px; height: 34px;">
+                🖨️ Imprimir / Guardar PDF Nativo
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- MODO 2: PDF A DOCX -->
+        <div id="pdfToDocxSection" style="display: none;">
+          <div class="ui-dropzone" id="pdfToDocxDropzone" onclick="document.getElementById('pdfToDocxInput').click()">
+            <input type="file" id="pdfToDocxInput" style="display: none;" accept=".pdf,application/pdf">
+            <div class="ui-dropzone-icon">${ICONS.pdf}</div>
+            <div class="ui-dropzone-title">Selecciona o arrastra tu archivo PDF</div>
+            <div class="ui-dropzone-sub">Extrae el texto página por página y genera un archivo Word (.docx) editable</div>
+          </div>
+
+          <div id="pdfToDocxWorkArea" style="display: none;">
+            <div style="background: var(--md-sys-color-surface-variant); border-radius: 12px; padding: 12px 16px; margin-bottom: 14px; border: 1px solid var(--md-sys-color-outline-variant); display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <strong id="pdfToDocxFileName" style="font-size: 13px; word-break: break-all;"></strong>
+                <div id="pdfToDocxFileInfo" style="font-size: 11px; color: var(--md-sys-color-on-surface-variant);"></div>
+              </div>
+              <button class="ui-btn ui-btn-outlined" style="padding: 4px 10px; font-size: 11px; height: auto;" onclick="resetPdfToDocx()">Cambiar PDF</button>
+            </div>
+
+            <div style="background: var(--md-sys-color-surface-variant); border-radius: 10px; padding: 12px 14px; margin-bottom: 14px; font-size: 12px; line-height: 1.4;">
+              <div>• Extrae párrafos, saltos de línea y texto plano preservando el orden de lectura.</div>
+              <div>• Genera un archivo <strong>.docx</strong> estándar compatible con Microsoft Word, LibreOffice y Google Docs.</div>
+            </div>
+          </div>
+        </div>
+
+        <div id="docConversionProgressWrap" style="display: none; margin-top: 12px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; margin-bottom: 6px;">
+            <span id="docConversionStatusText">Procesando conversión...</span>
+            <span id="docConversionPercent" style="font-weight: 600;">0%</span>
+          </div>
+          <div style="background: var(--md-sys-color-surface-variant); border-radius: 8px; height: 8px; overflow: hidden;">
+            <div id="docConversionBarFill" style="background: var(--md-sys-color-primary); height: 100%; width: 0%; transition: width 0.15s ease;"></div>
+          </div>
+        </div>
+      `;
+
+      footer.innerHTML = `
+        <button class="ui-btn ui-btn-outlined" id="btnCancelDocConv" onclick="closeToolModal()">Cancelar</button>
+        <button class="ui-btn ui-btn-primary" id="btnExecDocConv" disabled onclick="executeDocConversion()">Descargar PDF</button>
+      `;
+
+      let currentDocMode = "docx-to-pdf";
+      let loadedDocxFile = null;
+      let loadedPdfFile = null;
+      let pdfToDocxDoc = null;
+      let docxRenderedHtml = "";
+      let isDocConvCancelled = false;
+
+      window.cancelDocToPdf = function() {
+        isDocConvCancelled = true;
+      };
+
+      window.switchDocMode = function(mode) {
+        currentDocMode = mode;
+        const btnDocx = document.getElementById("docModeDocxToPdf");
+        const btnPdf = document.getElementById("docModePdfToDocx");
+        const secDocx = document.getElementById("docxToPdfSection");
+        const secPdf = document.getElementById("pdfToDocxSection");
+        const btnExec = document.getElementById("btnExecDocConv");
+
+        if (mode === "docx-to-pdf") {
+          btnDocx.className = "ui-btn ui-btn-primary";
+          btnDocx.style.border = "none";
+          btnPdf.className = "ui-btn ui-btn-outlined";
+          secDocx.style.display = "block";
+          secPdf.style.display = "none";
+          btnExec.innerText = "Descargar PDF";
+          if (loadedDocxFile) btnExec.removeAttribute("disabled");
+          else btnExec.setAttribute("disabled", "true");
+        } else {
+          btnPdf.className = "ui-btn ui-btn-primary";
+          btnPdf.style.border = "none";
+          btnDocx.className = "ui-btn ui-btn-outlined";
+          secDocx.style.display = "none";
+          secPdf.style.display = "block";
+          btnExec.innerText = "Convertir a DOCX";
+          if (loadedPdfFile && pdfToDocxDoc) btnExec.removeAttribute("disabled");
+          else btnExec.setAttribute("disabled", "true");
+        }
+      };
+
+      window.resetDocxToPdf = function() {
+        loadedDocxFile = null;
+        docxRenderedHtml = "";
+        document.getElementById("docxToPdfInput").value = "";
+        document.getElementById("docxToPdfWorkArea").style.display = "none";
+        document.getElementById("docxToPdfDropzone").style.display = "block";
+        document.getElementById("btnExecDocConv").setAttribute("disabled", "true");
+        document.getElementById("docConversionProgressWrap").style.display = "none";
+      };
+
+      window.resetPdfToDocx = function() {
+        loadedPdfFile = null;
+        pdfToDocxDoc = null;
+        document.getElementById("pdfToDocxInput").value = "";
+        document.getElementById("pdfToDocxWorkArea").style.display = "none";
+        document.getElementById("pdfToDocxDropzone").style.display = "block";
+        document.getElementById("btnExecDocConv").setAttribute("disabled", "true");
+        document.getElementById("docConversionProgressWrap").style.display = "none";
+      };
+
+      // Handle DOCX input
+      const docxDropzone = document.getElementById("docxToPdfDropzone");
+      const docxInput = document.getElementById("docxToPdfInput");
+
+      async function handleDocxFile(file) {
+        if (!file) return;
+        if (!file.name.toLowerCase().endsWith(".docx")) {
+          showToast("Selecciona un archivo Word válido con formato .docx");
+          return;
+        }
+
+        try {
+          showToast("Leyendo documento DOCX...");
+          await ensureMammothReady();
+          const buffer = await file.arrayBuffer();
+          const result = await window.mammoth.convertToHtml({ arrayBuffer: buffer });
+          docxRenderedHtml = result.value || "<p><em>(Documento vacío)</em></p>";
+          loadedDocxFile = file;
+
+          docxDropzone.style.display = "none";
+          document.getElementById("docxToPdfWorkArea").style.display = "block";
+          document.getElementById("docxToPdfFileName").textContent = file.name;
+          document.getElementById("docxToPdfFileInfo").innerText = `Tamaño: ${formatFileSize(file.size)}`;
+          document.getElementById("docxPreviewBox").innerHTML = docxRenderedHtml;
+          document.getElementById("btnExecDocConv").removeAttribute("disabled");
+          showToast("DOCX leído correctamente");
+        } catch (err) {
+          console.error("Error al procesar DOCX con mammoth:", err);
+          showToast("Error al abrir el documento DOCX. Comprueba que no esté dañado.");
+        }
+      }
+
+      docxInput.addEventListener("change", (e) => handleDocxFile(e.target.files[0]));
+      docxDropzone.addEventListener("dragover", (e) => { e.preventDefault(); docxDropzone.classList.add("dragover"); });
+      docxDropzone.addEventListener("dragleave", () => docxDropzone.classList.remove("dragover"));
+      docxDropzone.addEventListener("drop", (e) => {
+        e.preventDefault();
+        docxDropzone.classList.remove("dragover");
+        if (e.dataTransfer.files.length) handleDocxFile(e.dataTransfer.files[0]);
+      });
+
+      window.printDocxHtml = function() {
+        if (!docxRenderedHtml) return;
+        const printWin = window.open("", "_blank");
+        if (!printWin) {
+          showToast("Permite las ventanas emergentes para imprimir");
+          return;
+        }
+        printWin.document.write(`
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <title>${escapeHtml(loadedDocxFile ? loadedDocxFile.name : "Documento")}</title>
+              <style>
+                body { font-family: 'Segoe UI', Arial, sans-serif; margin: 40px; color: #111; line-height: 1.6; }
+                table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+                th, td { border: 1px solid #ccc; padding: 8px; }
+                img { max-width: 100%; height: auto; }
+                @media print { body { margin: 15mm; } }
+              </style>
+            </head>
+            <body>
+              ${docxRenderedHtml}
+              <script>
+                window.onload = () => { window.print(); };
+              </script>
+            </body>
+          </html>
+        `);
+        printWin.document.close();
+      };
+
+      // Handle PDF to DOCX input
+      const pdfDropzone = document.getElementById("pdfToDocxDropzone");
+      const pdfInput = document.getElementById("pdfToDocxInput");
+
+      async function handlePdfToDocxFile(file) {
+        if (!file) return;
+        if (!file.name.toLowerCase().endsWith(".pdf") && file.type !== "application/pdf") {
+          showToast("Por favor selecciona un archivo PDF válido");
+          return;
+        }
+
+        try {
+          showToast("Analizando documento PDF...");
+          await ensurePdfJsReady();
+          const buffer = await file.arrayBuffer();
+          const loadingTask = window.pdfjsLib.getDocument({ data: buffer });
+          loadingTask.onPassword = () => {
+            throw new Error("PASSWORD_PROTECTED");
+          };
+          pdfToDocxDoc = await loadingTask.promise;
+          loadedPdfFile = file;
+
+          pdfDropzone.style.display = "none";
+          document.getElementById("pdfToDocxWorkArea").style.display = "block";
+          document.getElementById("pdfToDocxFileName").textContent = file.name;
+          document.getElementById("pdfToDocxFileInfo").innerText = `${pdfToDocxDoc.numPages} página(s) • ${formatFileSize(file.size)}`;
+          document.getElementById("btnExecDocConv").removeAttribute("disabled");
+          showToast(`PDF listo (${pdfToDocxDoc.numPages} páginas)`);
+        } catch (err) {
+          console.error("Error al cargar PDF:", err);
+          if (err && (err.name === "PasswordException" || err.message === "PASSWORD_PROTECTED")) {
+            showToast("Este documento PDF está protegido con contraseña.");
+          } else {
+            showToast("Error al abrir el PDF. Comprueba que no esté corrupto.");
+          }
+        }
+      }
+
+      pdfInput.addEventListener("change", (e) => handlePdfToDocxFile(e.target.files[0]));
+      pdfDropzone.addEventListener("dragover", (e) => { e.preventDefault(); pdfDropzone.classList.add("dragover"); });
+      pdfDropzone.addEventListener("dragleave", () => pdfDropzone.classList.remove("dragover"));
+      pdfDropzone.addEventListener("drop", (e) => {
+        e.preventDefault();
+        pdfDropzone.classList.remove("dragover");
+        if (e.dataTransfer.files.length) handlePdfToDocxFile(e.dataTransfer.files[0]);
+      });
+
+      // Unified execution function
+      window.executeDocConversion = async function() {
+        const progressWrap = document.getElementById("docConversionProgressWrap");
+        const barFill = document.getElementById("docConversionBarFill");
+        const percentText = document.getElementById("docConversionPercent");
+        const statusText = document.getElementById("docConversionStatusText");
+        const btnExec = document.getElementById("btnExecDocConv");
+        const btnCancel = document.getElementById("btnCancelDocConv");
+
+        isDocConvCancelled = false;
+        progressWrap.style.display = "block";
+        btnExec.setAttribute("disabled", "true");
+        btnCancel.innerText = "Detener";
+        btnCancel.onclick = () => {
+          isDocConvCancelled = true;
+          statusText.innerText = "Cancelando...";
+        };
+
+        if (currentDocMode === "docx-to-pdf") {
+          // ================= DOCX TO PDF =================
+          if (!loadedDocxFile || !docxRenderedHtml) return;
+
+          barFill.style.width = "30%";
+          percentText.innerText = "30%";
+          statusText.innerText = "Cargando motor de renderizado HTML a PDF...";
+
+          try {
+            await ensureHtml2PdfReady();
+            if (isDocConvCancelled) throw new Error("CANCELLED");
+
+            barFill.style.width = "60%";
+            percentText.innerText = "60%";
+            statusText.innerText = "Maquetando páginas en formato A4...";
+
+            const element = document.createElement("div");
+            element.innerHTML = docxRenderedHtml;
+            element.style.fontFamily = "'Segoe UI', Arial, sans-serif";
+            element.style.fontSize = "12pt";
+            element.style.lineHeight = "1.5";
+            element.style.color = "#111111";
+            element.style.padding = "10px";
+
+            const opt = {
+              margin: [12, 12, 12, 12],
+              filename: `${loadedDocxFile.name.replace(/\.[^/.]+$/, "")}.pdf`,
+              image: { type: "jpeg", quality: 0.95 },
+              html2canvas: { scale: 2, useCORS: true, letterRendering: true },
+              jsPDF: { unit: "mm", format: "a4", orientation: "portrait" }
+            };
+
+            const worker = window.html2pdf().set(opt).from(element);
+            const pdfBlob = await worker.output("blob");
+
+            if (isDocConvCancelled) throw new Error("CANCELLED");
+
+            barFill.style.width = "95%";
+            percentText.innerText = "95%";
+            statusText.innerText = "Descargando PDF...";
+
+            const baseName = loadedDocxFile.name.replace(/\.[^/.]+$/, "");
+            const blobUrl = URL.createObjectURL(pdfBlob);
+            const a = document.createElement("a");
+            a.download = `${baseName}.pdf`;
+            a.href = blobUrl;
+            a.click();
+            setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+
+            barFill.style.width = "100%";
+            percentText.innerText = "100%";
+            statusText.innerText = "¡PDF generado exitosamente!";
+            showToast("✓ Archivo PDF generado y descargado");
+            setTimeout(() => closeToolModal(), 700);
+          } catch (err) {
+            if (err && err.message === "CANCELLED") {
+              showToast("Conversión cancelada");
+            } else {
+              console.error("Error al generar PDF desde DOCX:", err);
+              showToast("Error al generar el PDF. Puedes usar 'Imprimir / Guardar PDF' como alternativa.");
+            }
+          } finally {
+            btnExec.removeAttribute("disabled");
+            btnCancel.innerText = "Cerrar";
+            btnCancel.onclick = () => closeToolModal();
+          }
+
+        } else {
+          // ================= PDF TO DOCX =================
+          if (!loadedPdfFile || !pdfToDocxDoc) return;
+
+          barFill.style.width = "25%";
+          percentText.innerText = "25%";
+          statusText.innerText = "Cargando librería docx...";
+
+          try {
+            await ensureDocxReady();
+            if (isDocConvCancelled) throw new Error("CANCELLED");
+
+            const totalPages = pdfToDocxDoc.numPages;
+            const docChildren = [];
+
+            for (let i = 1; i <= totalPages; i++) {
+              if (isDocConvCancelled) throw new Error("CANCELLED");
+              const pct = Math.round(25 + ((i - 1) / totalPages) * 60);
+              barFill.style.width = `${pct}%`;
+              percentText.innerText = `${pct}%`;
+              statusText.innerText = `Extrayendo texto de página ${i} de ${totalPages}...`;
+
+              const page = await pdfToDocxDoc.getPage(i);
+              const textContent = await page.getTextContent();
+
+              let lastY = null;
+              let currentLine = "";
+              const lines = [];
+
+              for (const item of textContent.items) {
+                if (!item.str) continue;
+                const y = Math.round(item.transform[5]);
+                if (lastY !== null && Math.abs(y - lastY) > 4) {
+                  if (currentLine.trim()) lines.push(currentLine.trim());
+                  currentLine = item.str;
+                } else {
+                  currentLine += (currentLine ? " " : "") + item.str;
+                }
+                lastY = y;
+              }
+              if (currentLine.trim()) lines.push(currentLine.trim());
+
+              if (lines.length === 0) {
+                docChildren.push(new window.docx.Paragraph({
+                  children: [new window.docx.TextRun({ text: `[Página ${i} - Sin texto seleccionable o escaneada]`, italics: true, color: "888888" })]
+                }));
+              } else {
+                for (const line of lines) {
+                  docChildren.push(new window.docx.Paragraph({
+                    children: [new window.docx.TextRun({ text: line, size: 24 })]
+                  }));
+                }
+              }
+
+              if (i < totalPages) {
+                docChildren.push(new window.docx.Paragraph({
+                  children: [new window.docx.TextRun({ text: "", break: 1 })]
+                }));
+              }
+            }
+
+            if (isDocConvCancelled) throw new Error("CANCELLED");
+
+            barFill.style.width = "90%";
+            percentText.innerText = "90%";
+            statusText.innerText = "Empaquetando archivo Word (.docx)...";
+
+            const doc = new window.docx.Document({
+              sections: [{
+                properties: {},
+                children: docChildren
+              }]
+            });
+
+            const docxBlob = await window.docx.Packer.toBlob(doc);
+
+            if (isDocConvCancelled) throw new Error("CANCELLED");
+
+            barFill.style.width = "100%";
+            percentText.innerText = "100%";
+            statusText.innerText = "¡DOCX completado!";
+
+            const baseName = loadedPdfFile.name.replace(/\.[^/.]+$/, "");
+            const blobUrl = URL.createObjectURL(docxBlob);
+            const a = document.createElement("a");
+            a.download = `${baseName}-extraido.docx`;
+            a.href = blobUrl;
+            a.click();
+            setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+
+            showToast("✓ Archivo Word (.docx) descargado exitosamente");
+            setTimeout(() => closeToolModal(), 700);
+          } catch (err) {
+            if (err && err.message === "CANCELLED") {
+              showToast("Conversión cancelada");
+            } else {
+              console.error("Error al convertir PDF a DOCX:", err);
+              showToast("Error al generar el archivo Word (.docx)");
+            }
+          } finally {
+            btnExec.removeAttribute("disabled");
+            btnCancel.innerText = "Cerrar";
+            btnCancel.onclick = () => closeToolModal();
+          }
+        }
+      };
+      break;
+    }
+
+    // ---------------- HERRAMIENTAS EN DESARROLLO (IMÁGENES COMPLEJAS) ----------------
+    case "remove-bg": {
       container.innerHTML = `
         <div style="text-align: center; padding: 28px 16px; background: var(--md-sys-color-surface-variant); border-radius: 16px; border: 1px dashed var(--md-sys-color-outline-variant);">
           <div style="font-size: 38px; margin-bottom: 10px;">🛠️</div>
           <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 6px; color: var(--md-sys-color-on-surface);">Herramienta en Desarrollo</h3>
           <p style="font-size: 13px; color: var(--md-sys-color-on-surface-variant); max-width: 480px; margin: 0 auto 16px; line-height: 1.5;">
-            ${explanation}
+            La segmentación inteligente de sujetos y eliminación de fondo requiere un modelo de visión por computadora local (MediaPipe / TensorFlow.js ~40 MB) en preparación para no enviar tus fotos a servidores externos.
           </p>
           <div style="display: inline-flex; align-items: center; gap: 6px; background: #e8f0fe; color: #1a73e8; font-size: 12px; font-weight: 600; padding: 6px 14px; border-radius: 20px;">
             <span>⏱️</span> Próximamente disponible en ToolDrive
