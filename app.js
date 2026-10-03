@@ -71,24 +71,22 @@ const TOOLS = [
     category: "pdf",
     categoryName: "Gestión de PDF",
     title: "Compress PDF (Comprimir PDF)",
-    desc: "Reduce el tamaño de un archivo PDF hasta en un 80% para poder enviarlo fácilmente por correo.",
-    reason: "Optimización de peso para adjuntar en correo",
+    desc: "Reduce el peso del PDF rasterizando páginas a JPEG optimizado con resolución y calidad ajustables.",
+    reason: "Compresión visual en el navegador con vista previa de tamaño",
     location: "PDFs y Documentos",
     formats: ".pdf",
-    iconType: "pdf",
-    disabled: true
+    iconType: "pdf"
   },
   {
     id: "pdf-to-jpeg",
     category: "pdf",
     categoryName: "Gestión de PDF",
     title: "PDF to JPEG",
-    desc: "Convierte cada una de las páginas de un documento PDF en imágenes independientes de alta resolución.",
+    desc: "Renderiza y extrae las páginas de un PDF a imágenes JPEG en alta resolución (1x, 2x, 3x) individuales o en ZIP.",
     reason: "Extracción gráfica para presentaciones",
     location: "PDFs y Documentos",
     formats: ".pdf → .jpg",
-    iconType: "pdf",
-    disabled: true
+    iconType: "pdf"
   },
   {
     id: "sign-pdf",
@@ -176,12 +174,11 @@ const TOOLS = [
     category: "image",
     categoryName: "Imágenes",
     title: "HEIC to JPG",
-    desc: "Convierte fotos tomadas con iPhone (formato HEIC) a formato JPEG compatible con cualquier PC.",
+    desc: "Convierte fotos tomadas con iPhone (formato HEIC) a JPEG con calidad ajustable, individual o en lote ZIP.",
     reason: "Compatibilidad multiplataforma de Apple a PC",
     location: "Imágenes",
     formats: ".heic → .jpg",
-    iconType: "image",
-    disabled: true
+    iconType: "image"
   },
   {
     id: "svg-to-png",
@@ -209,13 +206,12 @@ const TOOLS = [
     id: "upscale-image",
     category: "image",
     categoryName: "Imágenes",
-    title: "Upscale Image (Agrandar imagen)",
-    desc: "Aumenta el tamaño en píxeles (2x o 4x) para fotos o ilustraciones pequeñas.",
-    reason: "Recuperación de detalles en fotos pequeñas",
+    title: "Upscale Image (Ampliar - Lanczos3)",
+    desc: "Aumenta el tamaño en píxeles (2x o 4x) mediante remuestreo Lanczos3 y filtro de nitidez (interpolación, no IA).",
+    reason: "Ampliación de alta fidelidad sin pixelado simple",
     location: "Imágenes",
-    formats: ".jpg, .png",
-    iconType: "image",
-    disabled: true
+    formats: ".jpg, .png, .webp",
+    iconType: "image"
   },
 
   // --- Categoría 3: Audio y Video ---
@@ -426,6 +422,99 @@ function safeSetStorage(key, value) {
     return false;
   }
 }
+
+// ==================== LAZY SCRIPT LOADERS (LOCAL /libs) ====================
+function loadScriptAsync(src) {
+  return new Promise((resolve, reject) => {
+    const fullUrl = new URL(src, window.location.href).href;
+    const existing = Array.from(document.querySelectorAll("script")).find(s => s.src === fullUrl);
+    if (existing) {
+      if (existing.getAttribute("data-loaded") === "true") {
+        return resolve();
+      }
+      existing.addEventListener("load", () => resolve(), { once: true });
+      existing.addEventListener("error", () => reject(new Error(`Error al cargar ${src}`)), { once: true });
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = fullUrl;
+    script.onload = () => {
+      script.setAttribute("data-loaded", "true");
+      resolve();
+    };
+    script.onerror = () => reject(new Error(`No se pudo cargar la librería local: ${src}`));
+    document.head.appendChild(script);
+  });
+}
+
+async function ensurePdfJsReady() {
+  if (typeof window.pdfjsLib === "undefined") {
+    await loadScriptAsync("libs/pdfjs/pdf.min.js");
+  }
+  if (window.pdfjsLib && !window.pdfjsLib.GlobalWorkerOptions.workerSrc) {
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc = new URL("libs/pdfjs/pdf.worker.min.js", window.location.href).href;
+  }
+}
+
+async function ensureJsZipReady() {
+  if (typeof window.JSZip === "undefined") {
+    await loadScriptAsync("libs/jszip/jszip.min.js");
+  }
+}
+
+async function ensureHeic2AnyReady() {
+  if (typeof window.heic2any === "undefined") {
+    await loadScriptAsync("libs/heic2any/heic2any.min.js");
+  }
+}
+
+async function ensurePicaReady() {
+  if (typeof window.pica === "undefined") {
+    await loadScriptAsync("libs/pica/pica.min.js");
+  }
+}
+
+function parsePdfRanges(rangeStr, maxPages) {
+  const set = new Set();
+  const trimmed = (rangeStr || "").trim().toLowerCase();
+  if (trimmed === "todas" || trimmed === "all" || trimmed === "") {
+    return Array.from({ length: maxPages }, (_, i) => i);
+  }
+  const parts = rangeStr.split(",");
+  for (let p of parts) {
+    p = p.trim();
+    if (!p) continue;
+    if (p.includes("-")) {
+      const [startStr, endStr] = p.split("-");
+      const start = parseInt(startStr, 10);
+      const end = parseInt(endStr, 10);
+      if (!isNaN(start) && !isNaN(end)) {
+        const from = Math.max(1, Math.min(start, end));
+        const to = Math.min(maxPages, Math.max(start, end));
+        for (let i = from; i <= to; i++) {
+          set.add(i - 1);
+        }
+      }
+    } else {
+      const num = parseInt(p, 10);
+      if (!isNaN(num) && num >= 1 && num <= maxPages) {
+        set.add(num - 1);
+      }
+    }
+  }
+  return Array.from(set).sort((a, b) => a - b);
+}
+
+function formatFileSize(bytes) {
+  if (bytes === 0) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+}
+
+window.parsePdfRanges = parsePdfRanges;
+window.formatFileSize = formatFileSize;
 
 const FOLDER_COLORS = ["#ea4335", "#1a73e8", "#34a853", "#f9ab00", "#9c27b0", "#009688", "#e91e63", "#ff6d00"];
 
@@ -1224,6 +1313,11 @@ window.closeToolModal = function() {
   if (window.cleanOcrResources) {
     try { window.cleanOcrResources(); } catch(e) {}
   }
+  // Cancel active background tasks if running
+  if (typeof window.cancelPdfToJpeg === "function") try { window.cancelPdfToJpeg(); } catch (e) {}
+  if (typeof window.cancelHeicConvert === "function") try { window.cancelHeicConvert(); } catch (e) {}
+  if (typeof window.cancelUpscale === "function") try { window.cancelUpscale(); } catch (e) {}
+  if (typeof window.cancelCompressPdf === "function") try { window.cancelCompressPdf(); } catch (e) {}
   // Clean any active object URLs created inside tool modals
   revokeAllModalObjectUrls();
 
@@ -3491,33 +3585,6 @@ function buildToolWorkspace(tool, container, footer) {
         if (e.dataTransfer.files.length) handleSplitFile(e.dataTransfer.files[0]);
       });
 
-      function parsePdfRanges(rangeStr, maxPages) {
-        const set = new Set();
-        const parts = rangeStr.split(",");
-        for (let p of parts) {
-          p = p.trim();
-          if (!p) continue;
-          if (p.includes("-")) {
-            const [startStr, endStr] = p.split("-");
-            const start = parseInt(startStr, 10);
-            const end = parseInt(endStr, 10);
-            if (!isNaN(start) && !isNaN(end)) {
-              const from = Math.max(1, Math.min(start, end));
-              const to = Math.min(maxPages, Math.max(start, end));
-              for (let i = from; i <= to; i++) {
-                set.add(i - 1);
-              }
-            }
-          } else {
-            const num = parseInt(p, 10);
-            if (!isNaN(num) && num >= 1 && num <= maxPages) {
-              set.add(num - 1);
-            }
-          }
-        }
-        return Array.from(set).sort((a, b) => a - b);
-      }
-
       window.executeSplitPdf = async function() {
         if (!loadedSplitFile) return;
         const rangeStr = document.getElementById("splitPagesInput").value;
@@ -3571,29 +3638,1015 @@ function buildToolWorkspace(tool, container, footer) {
       break;
     }
 
+    // ---------------- FASE 1: PDF TO JPEG ----------------
+    case "pdf-to-jpeg": {
+      container.innerHTML = `
+        <div class="ui-dropzone" id="pdfToJpgDropzone" onclick="document.getElementById('pdfToJpgInput').click()">
+          <input type="file" id="pdfToJpgInput" style="display: none;" accept=".pdf,application/pdf">
+          <div class="ui-dropzone-icon">${ICONS.pdf}</div>
+          <div class="ui-dropzone-title">Selecciona o arrastra tu archivo PDF</div>
+          <div class="ui-dropzone-sub">Convierte páginas de PDF a imágenes JPEG en alta definición</div>
+        </div>
+
+        <div id="pdfToJpgWorkArea" style="display: none;">
+          <div style="background: var(--md-sys-color-surface-variant); border-radius: 12px; padding: 14px 16px; margin-bottom: 14px; border: 1px solid var(--md-sys-color-outline-variant);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+              <strong id="pdfToJpgFileName" style="font-size: 14px; word-break: break-all;"></strong>
+              <button class="ui-btn ui-btn-outlined" style="padding: 4px 10px; font-size: 11px; height: auto;" onclick="resetPdfToJpg()">Cambiar archivo</button>
+            </div>
+            <div id="pdfToJpgFileInfo" style="font-size: 12px; color: var(--md-sys-color-on-surface-variant);"></div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px;">
+            <div>
+              <label for="pdfToJpgScale" style="font-size: 12px; font-weight: 500; display: block; margin-bottom: 4px;">Resolución / Escala:</label>
+              <select id="pdfToJpgScale" class="ui-input" style="width: 100%;">
+                <option value="1">1x (Estándar 72 DPI)</option>
+                <option value="2" selected>2x (Alta Definición 150 DPI - Recomendado)</option>
+                <option value="3">3x (Ultra HD 300 DPI)</option>
+              </select>
+            </div>
+            <div>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <label for="pdfToJpgQuality" style="font-size: 12px; font-weight: 500;">Calidad JPEG:</label>
+                <span id="pdfToJpgQualityVal" style="font-size: 12px; font-weight: 600;">90%</span>
+              </div>
+              <input type="range" id="pdfToJpgQuality" min="0.5" max="1.0" step="0.05" value="0.9" style="width: 100%; height: 36px; accent-color: var(--md-sys-color-primary);">
+            </div>
+          </div>
+
+          <div style="margin-bottom: 16px;">
+            <label for="pdfToJpgPages" style="font-size: 12px; font-weight: 500; display: block; margin-bottom: 4px;">Páginas a extraer:</label>
+            <input type="text" id="pdfToJpgPages" class="ui-input" style="width: 100%;" placeholder="ej. 1-3, 5 o 'todas'" value="todas">
+            <div id="pdfToJpgPageHint" style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); margin-top: 4px;"></div>
+          </div>
+
+          <div id="pdfToJpgProgressWrap" style="display: none; margin-top: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; margin-bottom: 6px;">
+              <span id="pdfToJpgStatusText">Renderizando páginas...</span>
+              <span id="pdfToJpgPercent" style="font-weight: 600;">0%</span>
+            </div>
+            <div style="background: var(--md-sys-color-surface-variant); border-radius: 8px; height: 8px; overflow: hidden;">
+              <div id="pdfToJpgBarFill" style="background: var(--md-sys-color-primary); height: 100%; width: 0%; transition: width 0.15s ease;"></div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      footer.innerHTML = `
+        <button class="ui-btn ui-btn-outlined" id="btnCancelPdfToJpg" onclick="closeToolModal()">Cancelar</button>
+        <button class="ui-btn ui-btn-primary" id="btnExecPdfToJpg" disabled onclick="executePdfToJpeg()">Convertir a JPEG</button>
+      `;
+
+      const dropzone = document.getElementById("pdfToJpgDropzone");
+      const fileInput = document.getElementById("pdfToJpgInput");
+      const workArea = document.getElementById("pdfToJpgWorkArea");
+      const btnExec = document.getElementById("btnExecPdfToJpg");
+      const qualityRange = document.getElementById("pdfToJpgQuality");
+      const qualityVal = document.getElementById("pdfToJpgQualityVal");
+
+      let loadedPdfToJpgFile = null;
+      let pdfToJpgDoc = null;
+      let isPdfToJpgCancelled = false;
+
+      window.cancelPdfToJpeg = function() {
+        isPdfToJpgCancelled = true;
+      };
+
+      window.resetPdfToJpg = function() {
+        isPdfToJpgCancelled = true;
+        loadedPdfToJpgFile = null;
+        pdfToJpgDoc = null;
+        fileInput.value = "";
+        workArea.style.display = "none";
+        dropzone.style.display = "block";
+        btnExec.setAttribute("disabled", "true");
+        document.getElementById("pdfToJpgProgressWrap").style.display = "none";
+      };
+
+      qualityRange.addEventListener("input", (e) => {
+        qualityVal.innerText = `${Math.round(parseFloat(e.target.value) * 100)}%`;
+      });
+
+      async function handlePdfToJpgFile(file) {
+        if (!file) return;
+        if (!file.name.toLowerCase().endsWith(".pdf") && file.type !== "application/pdf") {
+          showToast("Por favor selecciona un archivo PDF válido");
+          return;
+        }
+
+        try {
+          showToast("Cargando documento PDF...");
+          await ensurePdfJsReady();
+          const buffer = await file.arrayBuffer();
+          const loadingTask = window.pdfjsLib.getDocument({ data: buffer });
+          loadingTask.onPassword = () => {
+            throw new Error("PASSWORD_PROTECTED");
+          };
+          pdfToJpgDoc = await loadingTask.promise;
+          loadedPdfToJpgFile = file;
+
+          dropzone.style.display = "none";
+          workArea.style.display = "block";
+          document.getElementById("pdfToJpgFileName").textContent = file.name;
+          document.getElementById("pdfToJpgFileInfo").innerText = `${pdfToJpgDoc.numPages} página(s) • ${formatFileSize(file.size)}`;
+          document.getElementById("pdfToJpgPageHint").innerText = `Total: ${pdfToJpgDoc.numPages} página(s). Escribe 'todas' o rangos (ej. 1-${Math.min(3, pdfToJpgDoc.numPages)})`;
+          btnExec.removeAttribute("disabled");
+          showToast(`PDF listo (${pdfToJpgDoc.numPages} páginas)`);
+        } catch (err) {
+          console.error("Error al abrir PDF:", err);
+          if (err && (err.name === "PasswordException" || err.message === "PASSWORD_PROTECTED")) {
+            showToast("Este documento PDF está protegido con contraseña.");
+          } else {
+            showToast("Error al abrir el PDF. Comprueba que sea válido.");
+          }
+        }
+      }
+
+      fileInput.addEventListener("change", (e) => handlePdfToJpgFile(e.target.files[0]));
+      dropzone.addEventListener("dragover", (e) => { e.preventDefault(); dropzone.classList.add("dragover"); });
+      dropzone.addEventListener("dragleave", () => dropzone.classList.remove("dragover"));
+      dropzone.addEventListener("drop", (e) => {
+        e.preventDefault();
+        dropzone.classList.remove("dragover");
+        if (e.dataTransfer.files.length) handlePdfToJpgFile(e.dataTransfer.files[0]);
+      });
+
+      window.executePdfToJpeg = async function() {
+        if (!loadedPdfToJpgFile || !pdfToJpgDoc) return;
+        const rangeStr = document.getElementById("pdfToJpgPages").value;
+        const pageIndices = parsePdfRanges(rangeStr, pdfToJpgDoc.numPages);
+
+        if (pageIndices.length === 0) {
+          showToast(`Ingresa páginas válidas entre 1 y ${pdfToJpgDoc.numPages}`);
+          return;
+        }
+
+        const scale = parseFloat(document.getElementById("pdfToJpgScale").value) || 2;
+        const quality = parseFloat(document.getElementById("pdfToJpgQuality").value) || 0.9;
+        const progressWrap = document.getElementById("pdfToJpgProgressWrap");
+        const barFill = document.getElementById("pdfToJpgBarFill");
+        const percentText = document.getElementById("pdfToJpgPercent");
+        const statusText = document.getElementById("pdfToJpgStatusText");
+        const btnCancel = document.getElementById("btnCancelPdfToJpg");
+
+        isPdfToJpgCancelled = false;
+        progressWrap.style.display = "block";
+        btnExec.setAttribute("disabled", "true");
+        btnCancel.innerText = "Detener";
+        btnCancel.onclick = () => {
+          isPdfToJpgCancelled = true;
+          statusText.innerText = "Cancelando...";
+        };
+
+        const results = [];
+        try {
+          for (let i = 0; i < pageIndices.length; i++) {
+            if (isPdfToJpgCancelled) throw new Error("CANCELLED");
+            const pageNum = pageIndices[i] + 1;
+            const pct = Math.round((i / pageIndices.length) * 90);
+            barFill.style.width = `${pct}%`;
+            percentText.innerText = `${pct}%`;
+            statusText.innerText = `Renderizando página ${pageNum} (${i + 1} de ${pageIndices.length})...`;
+
+            const page = await pdfToJpgDoc.getPage(pageNum);
+            const viewport = page.getViewport({ scale });
+            const canvas = document.createElement("canvas");
+            canvas.width = viewport.width;
+            canvas.height = viewport.height;
+            const ctx = canvas.getContext("2d");
+            await page.render({ canvasContext: ctx, viewport }).promise;
+
+            const blob = await new Promise(res => canvas.toBlob(res, "image/jpeg", quality));
+            results.push({ pageNum, blob });
+            canvas.width = 0;
+            canvas.height = 0;
+          }
+
+          if (isPdfToJpgCancelled) throw new Error("CANCELLED");
+
+          const baseName = loadedPdfToJpgFile.name.replace(/\.[^/.]+$/, "");
+          barFill.style.width = "95%";
+          percentText.innerText = "95%";
+
+          if (results.length === 1) {
+            statusText.innerText = "Descargando imagen...";
+            const blobUrl = URL.createObjectURL(results[0].blob);
+            const a = document.createElement("a");
+            a.download = `${baseName}-pagina-${results[0].pageNum}.jpg`;
+            a.href = blobUrl;
+            a.click();
+            setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+            showToast("✓ Imagen JPEG descargada exitosamente");
+          } else {
+            statusText.innerText = "Empaquetando archivo ZIP...";
+            await ensureJsZipReady();
+            const zip = new window.JSZip();
+            results.forEach(r => {
+              zip.file(`${baseName}-pagina-${r.pageNum}.jpg`, r.blob);
+            });
+            const zipBlob = await zip.generateAsync({ type: "blob" });
+            const zipUrl = URL.createObjectURL(zipBlob);
+            const a = document.createElement("a");
+            a.download = `${baseName}-imagenes-jpg.zip`;
+            a.href = zipUrl;
+            a.click();
+            setTimeout(() => URL.revokeObjectURL(zipUrl), 1000);
+            showToast(`✓ ¡${results.length} imágenes extraídas y descargadas en ZIP!`);
+          }
+
+          barFill.style.width = "100%";
+          percentText.innerText = "100%";
+          statusText.innerText = "¡Completado!";
+          setTimeout(() => closeToolModal(), 700);
+        } catch (err) {
+          if (err && err.message === "CANCELLED") {
+            showToast("Conversión de PDF cancelada");
+          } else {
+            console.error("Error en pdf-to-jpeg:", err);
+            showToast("Ocurrió un error al extraer las páginas");
+          }
+        } finally {
+          btnExec.removeAttribute("disabled");
+          btnCancel.innerText = "Cerrar";
+          btnCancel.onclick = () => closeToolModal();
+        }
+      };
+      break;
+    }
+
+    // ---------------- FASE 1: HEIC TO JPG ----------------
+    case "heic-to-jpg": {
+      container.innerHTML = `
+        <div class="ui-dropzone" id="heicDropzone" onclick="document.getElementById('heicInput').click()">
+          <input type="file" id="heicInput" style="display: none;" accept=".heic,.heif,image/heic,image/heif" multiple>
+          <div class="ui-dropzone-icon">${ICONS.image}</div>
+          <div class="ui-dropzone-title">Selecciona o arrastra fotos HEIC / HEIF</div>
+          <div class="ui-dropzone-sub">Convierte fotos de iPhone a JPEG estándar (soporta múltiples archivos)</div>
+        </div>
+
+        <div id="heicWorkArea" style="display: none;">
+          <div style="background: var(--md-sys-color-surface-variant); border-radius: 12px; padding: 14px 16px; margin-bottom: 14px; border: 1px solid var(--md-sys-color-outline-variant);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+              <strong id="heicSummaryTitle" style="font-size: 14px;"></strong>
+              <button class="ui-btn ui-btn-outlined" style="padding: 4px 10px; font-size: 11px; height: auto;" onclick="resetHeic()">Cambiar archivos</button>
+            </div>
+            <div id="heicFilesList" style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); max-height: 80px; overflow-y: auto; line-height: 1.4;"></div>
+          </div>
+
+          <div style="margin-bottom: 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+              <label for="heicQuality" style="font-size: 12px; font-weight: 500;">Calidad JPEG de salida:</label>
+              <span id="heicQualityVal" style="font-size: 12px; font-weight: 600;">90%</span>
+            </div>
+            <input type="range" id="heicQuality" min="0.5" max="1.0" step="0.05" value="0.9" style="width: 100%; height: 36px; accent-color: var(--md-sys-color-primary);">
+            <div style="display: flex; justify-content: space-between; font-size: 10px; color: var(--md-sys-color-on-surface-variant);">
+              <span>Menor peso (50%)</span>
+              <span>Recomendado (90%)</span>
+              <span>Máxima calidad (100%)</span>
+            </div>
+          </div>
+
+          <div id="heicProgressWrap" style="display: none; margin-top: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; margin-bottom: 6px;">
+              <span id="heicStatusText">Preparando conversión...</span>
+              <span id="heicPercent" style="font-weight: 600;">0%</span>
+            </div>
+            <div style="background: var(--md-sys-color-surface-variant); border-radius: 8px; height: 8px; overflow: hidden;">
+              <div id="heicBarFill" style="background: var(--md-sys-color-primary); height: 100%; width: 0%; transition: width 0.15s ease;"></div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      footer.innerHTML = `
+        <button class="ui-btn ui-btn-outlined" id="btnCancelHeic" onclick="closeToolModal()">Cancelar</button>
+        <button class="ui-btn ui-btn-primary" id="btnExecHeic" disabled onclick="executeHeicToJpg()">Convertir a JPG</button>
+      `;
+
+      const dropzone = document.getElementById("heicDropzone");
+      const fileInput = document.getElementById("heicInput");
+      const workArea = document.getElementById("heicWorkArea");
+      const btnExec = document.getElementById("btnExecHeic");
+      const qualityRange = document.getElementById("heicQuality");
+      const qualityVal = document.getElementById("heicQualityVal");
+
+      let loadedHeicFiles = [];
+      let isHeicCancelled = false;
+
+      window.cancelHeicConvert = function() {
+        isHeicCancelled = true;
+      };
+
+      window.resetHeic = function() {
+        isHeicCancelled = true;
+        loadedHeicFiles = [];
+        fileInput.value = "";
+        workArea.style.display = "none";
+        dropzone.style.display = "block";
+        btnExec.setAttribute("disabled", "true");
+        document.getElementById("heicProgressWrap").style.display = "none";
+      };
+
+      qualityRange.addEventListener("input", (e) => {
+        qualityVal.innerText = `${Math.round(parseFloat(e.target.value) * 100)}%`;
+      });
+
+      function handleHeicFiles(fileList) {
+        if (!fileList || fileList.length === 0) return;
+        const valid = Array.from(fileList).filter(f => {
+          const ext = f.name.toLowerCase();
+          return ext.endsWith(".heic") || ext.endsWith(".heif") || f.type === "image/heic" || f.type === "image/heif";
+        });
+
+        if (valid.length === 0) {
+          showToast("Por favor selecciona archivos con extensión .heic o .heif");
+          return;
+        }
+
+        loadedHeicFiles = valid;
+        dropzone.style.display = "none";
+        workArea.style.display = "block";
+
+        const totalBytes = valid.reduce((acc, f) => acc + f.size, 0);
+        document.getElementById("heicSummaryTitle").textContent = `${valid.length} archivo(s) HEIC (${formatFileSize(totalBytes)})`;
+        document.getElementById("heicFilesList").innerHTML = valid.map(f => `<div>• ${escapeHtml(f.name)} (${formatFileSize(f.size)})</div>`).join("");
+        btnExec.removeAttribute("disabled");
+        showToast(`${valid.length} foto(s) HEIC lista(s)`);
+      }
+
+      fileInput.addEventListener("change", (e) => handleHeicFiles(e.target.files));
+      dropzone.addEventListener("dragover", (e) => { e.preventDefault(); dropzone.classList.add("dragover"); });
+      dropzone.addEventListener("dragleave", () => dropzone.classList.remove("dragover"));
+      dropzone.addEventListener("drop", (e) => {
+        e.preventDefault();
+        dropzone.classList.remove("dragover");
+        if (e.dataTransfer.files.length) handleHeicFiles(e.dataTransfer.files);
+      });
+
+      window.executeHeicToJpg = async function() {
+        if (loadedHeicFiles.length === 0) return;
+
+        const quality = parseFloat(document.getElementById("heicQuality").value) || 0.9;
+        const progressWrap = document.getElementById("heicProgressWrap");
+        const barFill = document.getElementById("heicBarFill");
+        const percentText = document.getElementById("heicPercent");
+        const statusText = document.getElementById("heicStatusText");
+        const btnCancel = document.getElementById("btnCancelHeic");
+
+        isHeicCancelled = false;
+        progressWrap.style.display = "block";
+        btnExec.setAttribute("disabled", "true");
+        btnCancel.innerText = "Detener";
+        btnCancel.onclick = () => {
+          isHeicCancelled = true;
+          statusText.innerText = "Cancelando...";
+        };
+
+        const outputItems = [];
+
+        try {
+          showToast("Cargando decodificador HEIC...");
+          await ensureHeic2AnyReady();
+
+          for (let i = 0; i < loadedHeicFiles.length; i++) {
+            if (isHeicCancelled) throw new Error("CANCELLED");
+            const file = loadedHeicFiles[i];
+            const pct = Math.round((i / loadedHeicFiles.length) * 85);
+            barFill.style.width = `${pct}%`;
+            percentText.innerText = `${pct}%`;
+            statusText.innerText = `Convirtiendo ${escapeHtml(file.name)} (${i + 1} de ${loadedHeicFiles.length})...`;
+
+            let conversionResult;
+            try {
+              conversionResult = await window.heic2any({
+                blob: file,
+                toType: "image/jpeg",
+                quality: quality
+              });
+            } catch (convErr) {
+              console.error("Error al convertir HEIC:", convErr);
+              throw new Error(`No se pudo decodificar "${file.name}". Asegúrate de que no esté dañado.`);
+            }
+
+            const blobs = Array.isArray(conversionResult) ? conversionResult : [conversionResult];
+            const base = file.name.replace(/\.[^/.]+$/, "");
+            if (blobs.length === 1) {
+              outputItems.push({ name: `${base}.jpg`, blob: blobs[0] });
+            } else {
+              blobs.forEach((b, idx) => {
+                outputItems.push({ name: `${base}_${idx + 1}.jpg`, blob: b });
+              });
+            }
+          }
+
+          if (isHeicCancelled) throw new Error("CANCELLED");
+
+          barFill.style.width = "95%";
+          percentText.innerText = "95%";
+
+          if (outputItems.length === 1) {
+            statusText.innerText = "Descargando imagen...";
+            const blobUrl = URL.createObjectURL(outputItems[0].blob);
+            const a = document.createElement("a");
+            a.download = outputItems[0].name;
+            a.href = blobUrl;
+            a.click();
+            setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+            showToast("✓ Foto convertida a JPEG exitosamente");
+          } else {
+            statusText.innerText = "Empaquetando archivo ZIP...";
+            await ensureJsZipReady();
+            const zip = new window.JSZip();
+            outputItems.forEach(item => {
+              zip.file(item.name, item.blob);
+            });
+            const zipBlob = await zip.generateAsync({ type: "blob" });
+            const zipUrl = URL.createObjectURL(zipBlob);
+            const a = document.createElement("a");
+            a.download = `${loadedHeicFiles[0].name.replace(/\.[^/.]+$/, "")}-convertidas-jpg.zip`;
+            a.href = zipUrl;
+            a.click();
+            setTimeout(() => URL.revokeObjectURL(zipUrl), 1000);
+            showToast(`✓ ¡${outputItems.length} foto(s) convertidas y descargadas en ZIP!`);
+          }
+
+          barFill.style.width = "100%";
+          percentText.innerText = "100%";
+          statusText.innerText = "¡Completado!";
+          setTimeout(() => closeToolModal(), 700);
+        } catch (err) {
+          if (err && err.message === "CANCELLED") {
+            showToast("Conversión de HEIC cancelada");
+          } else {
+            console.error("Error en heic-to-jpg:", err);
+            showToast(err && err.message ? err.message : "Error al convertir fotos HEIC");
+          }
+        } finally {
+          btnExec.removeAttribute("disabled");
+          btnCancel.innerText = "Cerrar";
+          btnCancel.onclick = () => closeToolModal();
+        }
+      };
+      break;
+    }
+
+    // ---------------- FASE 1: UPSCALE IMAGE (LANCZOS3) ----------------
+    case "upscale-image": {
+      container.innerHTML = `
+        <div class="ui-dropzone" id="upscaleDropzone" onclick="document.getElementById('upscaleInput').click()">
+          <input type="file" id="upscaleInput" style="display: none;" accept="image/*">
+          <div class="ui-dropzone-icon">${ICONS.image}</div>
+          <div class="ui-dropzone-title">Selecciona o arrastra una imagen</div>
+          <div class="ui-dropzone-sub">Amplía la resolución mediante interpolación Lanczos3 de alta fidelidad</div>
+        </div>
+
+        <div id="upscaleWorkArea" style="display: none;">
+          <div style="background: var(--md-sys-color-surface-variant); border-radius: 12px; padding: 14px 16px; margin-bottom: 14px; border: 1px solid var(--md-sys-color-outline-variant);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+              <strong id="upscaleFileName" style="font-size: 14px; word-break: break-all;"></strong>
+              <button class="ui-btn ui-btn-outlined" style="padding: 4px 10px; font-size: 11px; height: auto;" onclick="resetUpscale()">Cambiar imagen</button>
+            </div>
+            <div id="upscaleOrigDims" style="font-size: 12px; color: var(--md-sys-color-on-surface-variant);"></div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px;">
+            <div>
+              <label for="upscaleFactor" style="font-size: 12px; font-weight: 500; display: block; margin-bottom: 4px;">Factor de ampliación:</label>
+              <select id="upscaleFactor" class="ui-input" style="width: 100%;">
+                <option value="2" selected>2x (Doble resolución)</option>
+                <option value="4">4x (Cuádruple resolución)</option>
+              </select>
+            </div>
+            <div>
+              <label for="upscaleFormat" style="font-size: 12px; font-weight: 500; display: block; margin-bottom: 4px;">Formato de salida:</label>
+              <select id="upscaleFormat" class="ui-input" style="width: 100%;">
+                <option value="image/png" selected>PNG (Sin pérdidas)</option>
+                <option value="image/jpeg">JPEG (Calidad 92%)</option>
+              </select>
+            </div>
+          </div>
+
+          <div style="background: var(--md-sys-color-surface-variant); border-radius: 10px; padding: 12px 14px; margin-bottom: 14px; font-size: 12px;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+              <span style="color: var(--md-sys-color-on-surface-variant);">Resolución resultante:</span>
+              <strong id="upscaleTargetDims" style="color: var(--md-sys-color-primary);">-</strong>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px; margin-top: 6px;">
+              <input type="checkbox" id="upscaleSharpen" checked style="accent-color: var(--md-sys-color-primary); cursor: pointer;">
+              <label for="upscaleSharpen" style="font-size: 12px; cursor: pointer;">Aplicar filtro de enfoque inteligente (Unsharp Mask)</label>
+            </div>
+          </div>
+
+          <div style="background: #fef7e0; color: #7c4a00; border-radius: 10px; padding: 10px 12px; font-size: 11px; line-height: 1.4; margin-bottom: 14px; display: flex; gap: 8px; align-items: flex-start;">
+            <span>ℹ️</span>
+            <div>
+              <strong>Interpolación matemática (Lanczos3), no IA:</strong> remuestrea píxeles mediante sinc de 3 lóbulos para suavizar bordes sin pixelado simple, ejecutándose 100% en tu navegador.
+            </div>
+          </div>
+
+          <div id="upscaleProgressWrap" style="display: none; margin-top: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; margin-bottom: 6px;">
+              <span id="upscaleStatusText">Remuestreando imagen con Lanczos3...</span>
+              <span id="upscalePercent" style="font-weight: 600;">0%</span>
+            </div>
+            <div style="background: var(--md-sys-color-surface-variant); border-radius: 8px; height: 8px; overflow: hidden;">
+              <div id="upscaleBarFill" style="background: var(--md-sys-color-primary); height: 100%; width: 0%; transition: width 0.15s ease;"></div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      footer.innerHTML = `
+        <button class="ui-btn ui-btn-outlined" id="btnCancelUpscale" onclick="closeToolModal()">Cancelar</button>
+        <button class="ui-btn ui-btn-primary" id="btnExecUpscale" disabled onclick="executeUpscale()">Ampliar Imagen</button>
+      `;
+
+      const dropzone = document.getElementById("upscaleDropzone");
+      const fileInput = document.getElementById("upscaleInput");
+      const workArea = document.getElementById("upscaleWorkArea");
+      const btnExec = document.getElementById("btnExecUpscale");
+      const factorSelect = document.getElementById("upscaleFactor");
+
+      let loadedUpscaleFile = null;
+      let loadedUpscaleImg = null;
+      let origWidth = 0;
+      let origHeight = 0;
+      let isUpscaleCancelled = false;
+
+      window.cancelUpscale = function() {
+        isUpscaleCancelled = true;
+      };
+
+      window.resetUpscale = function() {
+        isUpscaleCancelled = true;
+        loadedUpscaleFile = null;
+        if (loadedUpscaleImg && loadedUpscaleImg.src && loadedUpscaleImg.src.startsWith("blob:")) {
+          URL.revokeObjectURL(loadedUpscaleImg.src);
+        }
+        loadedUpscaleImg = null;
+        fileInput.value = "";
+        workArea.style.display = "none";
+        dropzone.style.display = "block";
+        btnExec.setAttribute("disabled", "true");
+        document.getElementById("upscaleProgressWrap").style.display = "none";
+      };
+
+      function updateUpscaleDimensions() {
+        if (!origWidth || !origHeight) return;
+        const factor = parseInt(factorSelect.value, 10) || 2;
+        const targetW = origWidth * factor;
+        const targetH = origHeight * factor;
+        const targetDimsEl = document.getElementById("upscaleTargetDims");
+
+        const MAX_DIM = 16384;
+        const MAX_AREA = 33554432; // ~33 MP
+
+        if (targetW > MAX_DIM || targetH > MAX_DIM || (targetW * targetH > MAX_AREA)) {
+          targetDimsEl.innerHTML = `<span style="color: #c5221f;">${targetW} × ${targetH} px (Excede el límite de memoria del navegador)</span>`;
+          btnExec.setAttribute("disabled", "true");
+        } else {
+          targetDimsEl.innerText = `${targetW} × ${targetH} px (+${(factor * factor - 1) * 100}% píxeles)`;
+          btnExec.removeAttribute("disabled");
+        }
+      }
+
+      factorSelect.addEventListener("change", updateUpscaleDimensions);
+
+      function handleUpscaleFile(file) {
+        if (!file) return;
+        if (!file.type.startsWith("image/")) {
+          showToast("Por favor selecciona un archivo de imagen válido");
+          return;
+        }
+
+        const objectUrl = URL.createObjectURL(file);
+        const img = new Image();
+        img.onload = () => {
+          if (img.naturalWidth === 0 || img.naturalHeight === 0) {
+            URL.revokeObjectURL(objectUrl);
+            showToast("La imagen no contiene píxeles válidos o está corrupta");
+            return;
+          }
+
+          loadedUpscaleFile = file;
+          loadedUpscaleImg = img;
+          origWidth = img.naturalWidth;
+          origHeight = img.naturalHeight;
+
+          dropzone.style.display = "none";
+          workArea.style.display = "block";
+          document.getElementById("upscaleFileName").textContent = file.name;
+          document.getElementById("upscaleOrigDims").innerText = `Resolución original: ${origWidth} × ${origHeight} px • ${formatFileSize(file.size)}`;
+
+          updateUpscaleDimensions();
+          showToast(`Imagen lista (${origWidth} × ${origHeight} px)`);
+        };
+        img.onerror = () => {
+          URL.revokeObjectURL(objectUrl);
+          showToast("Error al decodificar la imagen");
+        };
+        img.src = objectUrl;
+      }
+
+      fileInput.addEventListener("change", (e) => handleUpscaleFile(e.target.files[0]));
+      dropzone.addEventListener("dragover", (e) => { e.preventDefault(); dropzone.classList.add("dragover"); });
+      dropzone.addEventListener("dragleave", () => dropzone.classList.remove("dragover"));
+      dropzone.addEventListener("drop", (e) => {
+        e.preventDefault();
+        dropzone.classList.remove("dragover");
+        if (e.dataTransfer.files.length) handleUpscaleFile(e.dataTransfer.files[0]);
+      });
+
+      window.executeUpscale = async function() {
+        if (!loadedUpscaleFile || !loadedUpscaleImg) return;
+
+        const factor = parseInt(factorSelect.value, 10) || 2;
+        const targetW = origWidth * factor;
+        const targetH = origHeight * factor;
+        const format = document.getElementById("upscaleFormat").value || "image/png";
+        const sharpen = document.getElementById("upscaleSharpen").checked;
+
+        const progressWrap = document.getElementById("upscaleProgressWrap");
+        const barFill = document.getElementById("upscaleBarFill");
+        const percentText = document.getElementById("upscalePercent");
+        const statusText = document.getElementById("upscaleStatusText");
+        const btnCancel = document.getElementById("btnCancelUpscale");
+
+        isUpscaleCancelled = false;
+        progressWrap.style.display = "block";
+        btnExec.setAttribute("disabled", "true");
+        btnCancel.innerText = "Detener";
+        btnCancel.onclick = () => {
+          isUpscaleCancelled = true;
+          statusText.innerText = "Cancelando...";
+        };
+
+        barFill.style.width = "20%";
+        percentText.innerText = "20%";
+
+        const fromCanvas = document.createElement("canvas");
+        fromCanvas.width = origWidth;
+        fromCanvas.height = origHeight;
+        const fromCtx = fromCanvas.getContext("2d");
+        fromCtx.drawImage(loadedUpscaleImg, 0, 0);
+
+        const toCanvas = document.createElement("canvas");
+        toCanvas.width = targetW;
+        toCanvas.height = targetH;
+
+        try {
+          showToast("Cargando motor de remuestreo...");
+          await ensurePicaReady();
+
+          if (isUpscaleCancelled) throw new Error("CANCELLED");
+
+          barFill.style.width = "40%";
+          percentText.innerText = "40%";
+          statusText.innerText = `Calculando interpolación Lanczos3 a ${targetW} × ${targetH} px...`;
+
+          const picaInstance = window.pica();
+          await picaInstance.resize(fromCanvas, toCanvas, {
+            filter: "lanczos3",
+            unsharpAmount: sharpen ? 80 : 0,
+            unsharpRadius: 0.6,
+            unsharpThreshold: 2
+          });
+
+          if (isUpscaleCancelled) throw new Error("CANCELLED");
+
+          barFill.style.width = "85%";
+          percentText.innerText = "85%";
+          statusText.innerText = "Generando archivo final...";
+
+          const ext = format === "image/jpeg" ? "jpg" : "png";
+          const blob = await picaInstance.toBlob(toCanvas, format, format === "image/jpeg" ? 0.92 : undefined);
+
+          if (isUpscaleCancelled) throw new Error("CANCELLED");
+
+          const baseName = loadedUpscaleFile.name.replace(/\.[^/.]+$/, "");
+          const blobUrl = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.download = `${baseName}-${factor}x-lanczos3.${ext}`;
+          a.href = blobUrl;
+          a.click();
+          setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+
+          barFill.style.width = "100%";
+          percentText.innerText = "100%";
+          statusText.innerText = "¡Ampliación completada!";
+          showToast(`✓ Imagen ampliada a ${targetW} × ${targetH} px descargada`);
+          setTimeout(() => closeToolModal(), 700);
+        } catch (err) {
+          if (err && err.message === "CANCELLED") {
+            showToast("Ampliación cancelada");
+          } else {
+            console.error("Error en upscale-image:", err);
+            showToast("Error al remuestrear la imagen");
+          }
+        } finally {
+          fromCanvas.width = 0;
+          fromCanvas.height = 0;
+          toCanvas.width = 0;
+          toCanvas.height = 0;
+          btnExec.removeAttribute("disabled");
+          btnCancel.innerText = "Cerrar";
+          btnCancel.onclick = () => closeToolModal();
+        }
+      };
+      break;
+    }
+
+    // ---------------- FASE 1: COMPRESS PDF (RASTERIZADO OPTIMIZADO) ----------------
+    case "compress-pdf": {
+      container.innerHTML = `
+        <div class="ui-dropzone" id="compressPdfDropzone" onclick="document.getElementById('compressPdfInput').click()">
+          <input type="file" id="compressPdfInput" style="display: none;" accept=".pdf,application/pdf">
+          <div class="ui-dropzone-icon">${ICONS.pdf}</div>
+          <div class="ui-dropzone-title">Selecciona o arrastra tu archivo PDF</div>
+          <div class="ui-dropzone-sub">Comprime y optimiza páginas rasterizadas con control de resolución</div>
+        </div>
+
+        <div id="compressPdfWorkArea" style="display: none;">
+          <div style="background: var(--md-sys-color-surface-variant); border-radius: 12px; padding: 14px 16px; margin-bottom: 14px; border: 1px solid var(--md-sys-color-outline-variant);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+              <strong id="compressPdfFileName" style="font-size: 14px; word-break: break-all;"></strong>
+              <button class="ui-btn ui-btn-outlined" style="padding: 4px 10px; font-size: 11px; height: auto;" onclick="resetCompressPdf()">Cambiar PDF</button>
+            </div>
+            <div id="compressPdfFileInfo" style="font-size: 12px; color: var(--md-sys-color-on-surface-variant);"></div>
+          </div>
+
+          <div style="background: #fef7e0; color: #7c4a00; border-radius: 10px; padding: 10px 12px; font-size: 11px; line-height: 1.4; margin-bottom: 14px; display: flex; gap: 8px; align-items: flex-start;">
+            <span>⚠️</span>
+            <div>
+              <strong>Aviso de compresión por rasterización:</strong> Las páginas se recomprimen como imágenes optimizadas. <u>El texto dejará de ser seleccionable</u>. Ideal para contratos escaneados o documentos pesados.
+            </div>
+          </div>
+
+          <div style="margin-bottom: 16px;">
+            <label for="compressPdfPreset" style="font-size: 12px; font-weight: 500; display: block; margin-bottom: 4px;">Nivel de compresión / Calidad:</label>
+            <select id="compressPdfPreset" class="ui-input" style="width: 100%;">
+              <option value="balanced" selected>Equilibrado (150 DPI, Calidad JPEG 75% - Recomendado)</option>
+              <option value="strong">Compresión Máxima (100 DPI, Calidad JPEG 55% - Menor tamaño)</option>
+              <option value="light">Ligera (200 DPI, Calidad JPEG 85% - Mayor nitidez)</option>
+            </select>
+          </div>
+
+          <div id="compressPdfProgressWrap" style="display: none; margin-top: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; margin-bottom: 6px;">
+              <span id="compressPdfStatusText">Optimizando páginas...</span>
+              <span id="compressPdfPercent" style="font-weight: 600;">0%</span>
+            </div>
+            <div style="background: var(--md-sys-color-surface-variant); border-radius: 8px; height: 8px; overflow: hidden;">
+              <div id="compressPdfBarFill" style="background: var(--md-sys-color-primary); height: 100%; width: 0%; transition: width 0.15s ease;"></div>
+            </div>
+          </div>
+
+          <div id="compressPdfResultArea" style="display: none; margin-top: 16px; background: var(--md-sys-color-surface-variant); border-radius: 12px; padding: 16px; border: 1px solid var(--md-sys-color-outline-variant);">
+            <div style="font-size: 13px; font-weight: 600; margin-bottom: 10px; color: var(--md-sys-color-on-surface);">Resultado de la compresión</div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; font-size: 12px;">
+              <div>Tamaño original: <strong id="compressPdfOrigSize"></strong></div>
+              <div>Tamaño optimizado: <strong id="compressPdfNewSize"></strong></div>
+            </div>
+            <div id="compressPdfVerdictBadge" style="padding: 10px 12px; border-radius: 8px; font-size: 12px; margin-bottom: 14px; line-height: 1.4;"></div>
+            <div style="display: flex; justify-content: flex-end; gap: 8px;">
+              <button class="ui-btn ui-btn-primary" id="btnDownloadCompressedPdf" style="display: none;">Descargar PDF Comprimido</button>
+            </div>
+          </div>
+        </div>
+      `;
+
+      footer.innerHTML = `
+        <button class="ui-btn ui-btn-outlined" id="btnCancelCompressPdf" onclick="closeToolModal()">Cancelar</button>
+        <button class="ui-btn ui-btn-primary" id="btnExecCompressPdf" disabled onclick="executeCompressPdf()">Comprimir PDF</button>
+      `;
+
+      const dropzone = document.getElementById("compressPdfDropzone");
+      const fileInput = document.getElementById("compressPdfInput");
+      const workArea = document.getElementById("compressPdfWorkArea");
+      const btnExec = document.getElementById("btnExecCompressPdf");
+
+      let loadedCompressFile = null;
+      let compressPdfDoc = null;
+      let isCompressCancelled = false;
+      let compressedPdfBlob = null;
+
+      window.cancelCompressPdf = function() {
+        isCompressCancelled = true;
+      };
+
+      window.resetCompressPdf = function() {
+        isCompressCancelled = true;
+        loadedCompressFile = null;
+        compressPdfDoc = null;
+        compressedPdfBlob = null;
+        fileInput.value = "";
+        workArea.style.display = "none";
+        dropzone.style.display = "block";
+        btnExec.setAttribute("disabled", "true");
+        document.getElementById("compressPdfProgressWrap").style.display = "none";
+        document.getElementById("compressPdfResultArea").style.display = "none";
+      };
+
+      async function handleCompressPdfFile(file) {
+        if (!file) return;
+        if (!file.name.toLowerCase().endsWith(".pdf") && file.type !== "application/pdf") {
+          showToast("Por favor selecciona un archivo PDF válido");
+          return;
+        }
+
+        try {
+          showToast("Analizando documento PDF...");
+          await ensurePdfJsReady();
+          const buffer = await file.arrayBuffer();
+          const loadingTask = window.pdfjsLib.getDocument({ data: buffer });
+          loadingTask.onPassword = () => {
+            throw new Error("PASSWORD_PROTECTED");
+          };
+          compressPdfDoc = await loadingTask.promise;
+          loadedCompressFile = file;
+
+          dropzone.style.display = "none";
+          workArea.style.display = "block";
+          document.getElementById("compressPdfFileName").textContent = file.name;
+          document.getElementById("compressPdfFileInfo").innerText = `${compressPdfDoc.numPages} página(s) • ${formatFileSize(file.size)}`;
+          btnExec.removeAttribute("disabled");
+          document.getElementById("compressPdfResultArea").style.display = "none";
+          showToast(`PDF listo (${compressPdfDoc.numPages} páginas)`);
+        } catch (err) {
+          console.error("Error al abrir PDF:", err);
+          if (err && (err.name === "PasswordException" || err.message === "PASSWORD_PROTECTED")) {
+            showToast("Este documento PDF está protegido con contraseña.");
+          } else {
+            showToast("Error al abrir el PDF. Comprueba que no esté corrupto.");
+          }
+        }
+      }
+
+      fileInput.addEventListener("change", (e) => handleCompressPdfFile(e.target.files[0]));
+      dropzone.addEventListener("dragover", (e) => { e.preventDefault(); dropzone.classList.add("dragover"); });
+      dropzone.addEventListener("dragleave", () => dropzone.classList.remove("dragover"));
+      dropzone.addEventListener("drop", (e) => {
+        e.preventDefault();
+        dropzone.classList.remove("dragover");
+        if (e.dataTransfer.files.length) handleCompressPdfFile(e.dataTransfer.files[0]);
+      });
+
+      window.executeCompressPdf = async function() {
+        if (!loadedCompressFile || !compressPdfDoc) return;
+
+        const preset = document.getElementById("compressPdfPreset").value;
+        let scale = 1.5;
+        let quality = 0.75;
+        if (preset === "strong") {
+          scale = 1.0;
+          quality = 0.55;
+        } else if (preset === "light") {
+          scale = 2.0;
+          quality = 0.85;
+        }
+
+        const progressWrap = document.getElementById("compressPdfProgressWrap");
+        const barFill = document.getElementById("compressPdfBarFill");
+        const percentText = document.getElementById("compressPdfPercent");
+        const statusText = document.getElementById("compressPdfStatusText");
+        const btnCancel = document.getElementById("btnCancelCompressPdf");
+        const resultArea = document.getElementById("compressPdfResultArea");
+        const btnDownload = document.getElementById("btnDownloadCompressedPdf");
+
+        isCompressCancelled = false;
+        resultArea.style.display = "none";
+        progressWrap.style.display = "block";
+        btnExec.setAttribute("disabled", "true");
+        btnCancel.innerText = "Detener";
+        btnCancel.onclick = () => {
+          isCompressCancelled = true;
+          statusText.innerText = "Cancelando...";
+        };
+
+        const totalPages = compressPdfDoc.numPages;
+
+        try {
+          if (typeof window.PDFLib === "undefined") {
+            throw new Error("Librería PDFLib no disponible");
+          }
+          const newDoc = await window.PDFLib.PDFDocument.create();
+
+          for (let i = 1; i <= totalPages; i++) {
+            if (isCompressCancelled) throw new Error("CANCELLED");
+            const pct = Math.round(((i - 1) / totalPages) * 85);
+            barFill.style.width = `${pct}%`;
+            percentText.innerText = `${pct}%`;
+            statusText.innerText = `Optimizando página ${i} de ${totalPages}...`;
+
+            const page = await compressPdfDoc.getPage(i);
+            const baseViewport = page.getViewport({ scale: 1.0 });
+            const origW = baseViewport.width;
+            const origH = baseViewport.height;
+
+            const renderViewport = page.getViewport({ scale });
+            const canvas = document.createElement("canvas");
+            canvas.width = renderViewport.width;
+            canvas.height = renderViewport.height;
+            const ctx = canvas.getContext("2d");
+            await page.render({ canvasContext: ctx, viewport: renderViewport }).promise;
+
+            const jpgBlob = await new Promise(res => canvas.toBlob(res, "image/jpeg", quality));
+            canvas.width = 0;
+            canvas.height = 0;
+
+            const jpgBytes = await jpgBlob.arrayBuffer();
+            const embeddedJpg = await newDoc.embedJpg(jpgBytes);
+            const newPage = newDoc.addPage([origW, origH]);
+            newPage.drawImage(embeddedJpg, {
+              x: 0,
+              y: 0,
+              width: origW,
+              height: origH
+            });
+          }
+
+          if (isCompressCancelled) throw new Error("CANCELLED");
+
+          statusText.innerText = "Ensamblando documento PDF final...";
+          barFill.style.width = "92%";
+          percentText.innerText = "92%";
+
+          const outBytes = await newDoc.save();
+          compressedPdfBlob = new Blob([outBytes], { type: "application/pdf" });
+
+          barFill.style.width = "100%";
+          percentText.innerText = "100%";
+          statusText.innerText = "¡Compresión finalizada!";
+
+          const origSize = loadedCompressFile.size;
+          const newSize = compressedPdfBlob.size;
+          const diff = origSize - newSize;
+          const pctSavings = Math.round((diff / origSize) * 100);
+
+          document.getElementById("compressPdfOrigSize").innerText = formatFileSize(origSize);
+          document.getElementById("compressPdfNewSize").innerText = formatFileSize(newSize);
+
+          const badge = document.getElementById("compressPdfVerdictBadge");
+          btnDownload.style.display = "inline-flex";
+
+          const baseName = loadedCompressFile.name.replace(/\.[^/.]+$/, "");
+          btnDownload.onclick = () => {
+            const blobUrl = URL.createObjectURL(compressedPdfBlob);
+            const a = document.createElement("a");
+            a.download = `${baseName}-comprimido.pdf`;
+            a.href = blobUrl;
+            a.click();
+            setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+            showToast("✓ PDF comprimido descargado exitosamente");
+          };
+
+          if (newSize < origSize) {
+            badge.style.background = "#e6f4ea";
+            badge.style.color = "#137333";
+            badge.style.border = "1px solid #ceead6";
+            badge.innerHTML = `<strong>✓ ¡Reducción exitosa del ${pctSavings}%!</strong> El documento ahorró ${formatFileSize(diff)}.`;
+            btnDownload.innerText = "Descargar PDF Comprimido";
+            btnDownload.className = "ui-btn ui-btn-primary";
+            showToast(`✓ Ahorro del ${pctSavings}% conseguido`);
+          } else {
+            badge.style.background = "#fce8e6";
+            badge.style.color = "#c5221f";
+            badge.style.border = "1px solid #fad2cf";
+            badge.innerHTML = `<strong>⚠️ Aviso:</strong> El archivo resultante (${formatFileSize(newSize)}) no es menor que el original (${formatFileSize(origSize)}). El PDF original ya contiene gráficos compactos o vectores optimizados; no se recomienda reemplazarlo.`;
+            btnDownload.innerText = "Descargar de todos modos";
+            btnDownload.className = "ui-btn ui-btn-outlined";
+            showToast("El archivo resultante no redujo el tamaño");
+          }
+
+          resultArea.style.display = "block";
+        } catch (err) {
+          if (err && err.message === "CANCELLED") {
+            showToast("Compresión de PDF cancelada");
+          } else {
+            console.error("Error en compress-pdf:", err);
+            showToast("Ocurrió un error durante la compresión del PDF");
+          }
+        } finally {
+          btnExec.removeAttribute("disabled");
+          btnCancel.innerText = "Cerrar";
+          btnCancel.onclick = () => closeToolModal();
+        }
+      };
+      break;
+    }
+
     // ---------------- HERRAMIENTAS EN DESARROLLO (PDF & IMÁGENES COMPLEJAS) ----------------
     case "doc-to-pdf":
-    case "compress-pdf":
-    case "pdf-to-jpeg":
     case "unlock-pdf":
-    case "remove-bg":
-    case "upscale-image":
-    case "heic-to-jpg": {
+    case "remove-bg": {
       let explanation = "";
       if (tool.id === "doc-to-pdf") {
         explanation = "La conversión directa de archivos Word (.doc/.docx) a PDF requiere un motor de maquetación avanzada que actualmente se encuentra en desarrollo para ejecutarse 100% en el cliente sin servidores externos.";
-      } else if (tool.id === "compress-pdf") {
-        explanation = "La compresión avanzada con remuestreo de flujos de imágenes internas en PDF requiere un módulo especializado en WebAssembly que se integrará próximamente.";
-      } else if (tool.id === "pdf-to-jpeg") {
-        explanation = "La renderización y rasterización de páginas PDF completas a imágenes JPEG de alta definición está en desarrollo con motor local.";
       } else if (tool.id === "unlock-pdf") {
         explanation = "La remoción de restricciones y descifrado de seguridad criptográfica de documentos PDF estará disponible en la próxima actualización.";
       } else if (tool.id === "remove-bg") {
         explanation = "La segmentación inteligente de sujetos y eliminación de fondo requiere un modelo de visión por computadora local (MediaPipe / TensorFlow.js ~40 MB) en preparación para no enviar tus fotos a servidores externos.";
-      } else if (tool.id === "upscale-image") {
-        explanation = "El escalado de imágenes con superresolución requiere una red neuronal convolucional (ESRGAN WASM) en desarrollo para su ejecución local segura.";
-      } else if (tool.id === "heic-to-jpg") {
-        explanation = "La decodificación universal de fotos HEIC (Apple) en cualquier navegador requiere la integración de un decodificador WebAssembly (libheif) sin depender de Safari.";
       }
 
       container.innerHTML = `
