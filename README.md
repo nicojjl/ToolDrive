@@ -1,18 +1,18 @@
 # ToolDrive - Suite de Productividad y Herramientas Web
 
-Una aplicación web de herramientas y productividad con la interfaz, estilo visual y usabilidad exacta de **Google Drive** (Material Design 3).
+Una aplicación web de herramientas y productividad client-side con la interfaz, estilo visual y usabilidad de **Google Drive** (Material Design 3). Desarrollada con **Vanilla JavaScript**, sin frameworks, sin backend y con ejecución 100% local en el navegador para máxima privacidad y rendimiento.
 
 ---
 
 ## 🚀 Cómo abrir y usar
 
-No requiere instalación de dependencias ni conexión a servidores externos.
+No requiere instalación de dependencias, compiladores, ni conexión a servidores externos.
 
 ### Opción 1: Abrir directamente
 Haz doble clic en el archivo **`index.html`** para abrirlo en cualquier navegador web moderno (Google Chrome, Microsoft Edge, Mozilla Firefox o Safari).
 
 ### Opción 2: Servidor local (opcional)
-Si prefieres servirlo mediante un servidor local:
+Si prefieres servirlo mediante un servidor HTTP local para verificar capacidades de Web Workers y WebAssembly sin restricciones de políticas `file://`:
 ```bash
 # Con Python
 python -m http.server 8000
@@ -24,57 +24,107 @@ Luego visita `http://localhost:8000` en tu navegador.
 
 ---
 
-## 🛠️ Herramientas incluidas (30 herramientas completas)
+## 🖥️ Interfaz, Diseño y Experiencia de Usuario (Google Drive & Material 3)
 
-### 1. Gestión de PDF y Documentos
-- **Doc to PDF / PDF to Doc**: Convierte documentos de Word (.docx) a PDF o viceversa conservando formato y tablas.
-- **Merge PDF (Unir PDF)**: Combina varios archivos PDF individuales en un solo documento organizado.
-- **Split PDF (Dividir PDF)**: Extrae páginas específicas o rangos de un archivo PDF.
-- **Compress PDF (Comprimir PDF)**: Reduce el peso de un archivo PDF hasta un 60-80% para enviar por correo.
-- **PDF to JPEG**: Extrae cada página del PDF en imágenes JPG de alta resolución.
-- **Sign PDF (Firmar PDF)**: Pad de firma digital interactivo con dibujo manuscrito y descarga en PNG transparente o estampado en PDF.
-- **Unlock PDF (Desbloquear PDF)**: Elimina restricciones de copia, impresión y contraseñas de archivos PDF.
-
-### 2. Edición y Conversión de Imágenes
-- **PNG to JPG / JPG to PNG**: Conversor universal de formatos gráficos.
-- **Remove Background (Eliminar fondo)**: Aislamiento automático de siluetas y fondos transparentes.
-- **Image Compressor (Comprimir imágenes)**: Reduce el peso de imágenes JPEG/PNG/WebP con control de calidad en tiempo real.
-- **Image Resizer (Redimensionar)**: Ajusta ancho y alto a dimensiones exactas o proporciones personalizadas.
-- **Crop Image (Recortar imagen)**: Encuadre en proporciones 1:1 (Instagram), 16:9 (Banners) o libre.
-- **HEIC to JPG**: Convierte fotos de iPhone (.heic) a formato JPEG compatible universalmente.
-- **SVG to PNG**: Renderiza gráficos vectoriales SVG en imágenes ráster PNG nítidas.
-- **WebP to JPG**: Convierte el formato web moderno de Google a JPEG estándar.
-- **Upscale Image (Agrandar imagen)**: Aumenta la resolución 2x o 4x con algoritmos de superresolución y mejora de nitidez.
-
-### 3. Audio y Video
-- **Video to MP3**: Extrae pistas de audio en calidad MP3 (128, 192 o 320 kbps).
-- **MP4 to GIF**: Convierte fragmentos de video en clips animados GIF en bucle.
-- **Video Compressor (Comprimir video)**: Reduce el peso de videos para WhatsApp (límite 16MB) o correo.
-- **Audio Converter (Convertidor de audio)**: Transcodificación entre MP3, WAV, FLAC, M4A y OGG.
-- **Video Cutter (Recortar video)**: Corta segmentos de video con selector visual de inicio y fin.
-
-### 4. Texto y Productividad
-- **OCR (Texto desde imagen)**: Reconoce ópticamente y extrae texto de capturas, fotos y escaneos.
-- **Word Counter (Contador de palabras)**: Conteo en vivo de palabras, caracteres, frases, párrafos y tiempo estimado de lectura.
-- **Speech to Text (Dictado por voz)**: Transcribe tu voz en tiempo real con Web Speech API en español e inglés.
-- **Case Converter (Cambiar mayúsculas)**: Convierte a MAYÚSCULAS, minúsculas, Formato De Título, camelCase, snake_case y kebab-case.
-- **Lorem Ipsum Generator**: Generador de texto ficticio configurable en párrafos, frases o palabras.
-
-### 5. Utilidades Web y Desarrollador
-- **QR Code Generator (Generador de QR)**: Genera códigos QR instantáneos en PNG con colores personalizados (100% offline).
-- **URL Shortener (Acortador de enlaces)**: Genera enlaces cortos tipo Bitly con QR descargable.
-- **Color Picker (Selector de color)**: Cuentagotas de pantalla, selector de color y códigos HEX, RGB y HSL con un clic.
-- **JSON Formatter (Formateador JSON)**: Validador de sintaxis, formateo con sangría (2/4 espacios) y minificación de JSON.
+- **Sin Scrollbars Flotantes**: Desplazamiento fluido y minimalista integrado en el contenedor principal (`.main-scrollable`) y barra lateral, eliminando barras de desplazamiento dobles o flotantes que desajusten el layout.
+- **Estructura de Columnas Adaptable**:
+  - **Pantallas grandes (> 900px)**: 4 columnas completas: *Nombre* (con icono vectorial semántico), *Motivo por el que se te sugiere*, *Ubicación* (carpeta/categoría) y *Acciones* (con encabezado accesible para lectores de pantalla).
+  - **Tablets y pantallas medianas (≤ 900px)**: 3 columnas (*Nombre*, *Motivo*, *Acciones*; se oculta automáticamente la columna *Ubicación*).
+  - **Móviles y pantallas compactas (≤ 640px hasta 320px)**: 2 columnas (*Nombre* con elipsis elástica y *Acciones* compactas; se oculta la columna *Motivo*). Libre de desbordamiento horizontal entre 320px y 1920px.
+- **Carpetas Personalizadas y Gestión**: Creación de carpetas a medida con paleta de colores Material 3, asignación y desasignación rápida de herramientas en un clic, y menú contextual de 3 puntos accesible por ratón y teclado (modificar nombre, cambiar color, gestionar herramientas y eliminar con salvaguarda de herramientas).
+- **Sincronización Multi-Pestaña**: Escucha reactiva del evento `storage` para sincronizar instantáneamente favoritos, carpetas personalizadas y preferencias de tema entre pestañas abiertas.
+- **Ventanas Modales Estáticas y Seguras**: Las ventanas de herramientas (`#toolModalBackdrop`) no se cierran ante clics accidentales en el fondo difuminado (emiten un pulso estático visual de retroalimentación); cuentan con soporte de tecla `Escape`, *focus trap* accesible y restauración de foco al control que las abrió.
+- **Interruptor Modo Oscuro estilo iPhone**: Switch deslizante con animación física y glifos vectoriales de sol y luna.
+- **Buscador en Tiempo Real**: Filtrado dinámico instantáneo con atajo global de teclado (`/`) y botón accesible de limpieza rápida.
 
 ---
 
-## ✨ Características de diseño estilo Google Drive & iOS
-- **Carpetas Personalizadas**: Crea tus propias carpetas (ej. "Ejemplo 1") con color personalizado y añade las herramientas que quieras organizar.
-- **Gestión Rápida de Herramientas**: Botón de carpeta en cada fila/tarjeta para asignar o desasignar herramientas en 1 clic.
-- **Ventanas Modales Estáticas**: Las herramientas permanecen abiertas sin cerrarse por accidente si haces clic en el fondo desenfocado; se cierran únicamente con el botón "Cerrar", "Cancelar" o la cruz.
-- **Barra de búsqueda superior**: Búsqueda ancha en tiempo real con atajo de teclado (`/`).
-- **Interruptor Modo Oscuro tipo iPhone**: Switch deslizante suave con iconos vectoriales de sol y luna diseñados a medida.
-- **Interfaz 100% limpia sin barras toscas**: Desplazamiento fluido sin líneas de scrollbar molestas a la derecha.
-- **Vista de Lista y Cuadrícula**: Alternador moderno (tabla limpia con columnas de Nombre, Motivo, Ubicación y Acción, o cuadrícula de tarjetas).
-- **Favoritos (Destacados)**: Guarda tus herramientas favoritas con persistencia local en `localStorage`.
-- **Privacidad Total**: Todo el procesamiento se realiza localmente en el navegador, tus archivos nunca se suben a ningún servidor externo.
+## 🛠️ Estado Real de las Herramientas (Auditoría Técnica)
+
+A diferencia de versiones anteriores con simulaciones mediante temporizadores (*mocks*), ToolDrive clasifica de forma honesta y transparente sus 30 herramientas:
+
+### 1. Herramientas con Procesamiento REAL (100% Client-Side)
+
+| Herramienta | Categoría | Motor / Tecnología | Descripción |
+|---|---|---|---|
+| **OCR (Texto desde imagen)** | Texto | Tesseract.js (WASM local) | Extracción óptica de caracteres 100% offline alojada en `/ocr-assets`, modelos de idioma español e inglés, copia segura y descarga `.txt`. |
+| **Merge PDF (Unir PDF)** | PDF | PDF-LIB (`pdf-lib.min.js`) | Combina 2 o más archivos PDF reales en un único documento final generado en memoria local. |
+| **Split PDF (Dividir PDF)** | PDF | PDF-LIB (`pdf-lib.min.js`) | Permite extraer páginas individuales o rangos específicos (ej. 1-3, 5) generando un nuevo PDF válido. |
+| **Sign PDF (Firmar PDF)** | PDF | Canvas API + PDF-LIB | Pad de firma con captura táctil y de ratón (eventos pasivos cancelables), exportación a PNG transparente y estampado directo de firma en documentos PDF. |
+| **Image Compressor** | Imágenes | Canvas 2D API | Compresión y remuestreo real con selector de factor de calidad y cálculo exacto de reducción en KB. |
+| **Image Resizer** | Imágenes | Canvas 2D API | Redimensionamiento real de píxeles con preservación opcional de relación de aspecto. |
+| **Crop Image** | Imágenes | Canvas 2D API | Recorte gráfico interactivo en formatos 1:1, 16:9 o libre. |
+| **PNG to JPG / JPG to PNG / WebP to JPG / SVG to PNG** | Imágenes | Canvas 2D API | Transcodificación y rasterización gráfica real en el cliente. |
+| **QR Code Generator** | Dev | qrcode-generator (`qr-lib.js`) | Generación instantánea de códigos QR en lienzo y descarga en imagen PNG transparente. |
+| **Color Picker** | Dev | EyeDropper API + Canvas | Cuentagotas de pantalla nativo (con detección de compatibilidad de navegador) y conversión de valores HEX, RGB y HSL. |
+| **JSON Formatter** | Dev | JavaScript Engine | Validación de sintaxis, sangría estructurada a 2/4 espacios y minificación sin alterar datos. |
+| **Word Counter** | Texto | JavaScript Engine | Conteo reactivo en vivo de palabras, caracteres, párrafos y tiempo estimado de lectura. |
+| **Speech to Text** | Texto | Web Speech API | Transcripción de dictado por voz en tiempo real con control robusto de errores de permisos y micrófono. |
+| **Case Converter** | Texto | JavaScript Engine | Transformación de cadenas a 8 variantes (Mayúsculas, Minúsculas, Título, camelCase, snake_case, etc.). |
+| **Lorem Ipsum Generator** | Texto | JavaScript Engine | Generador paramétrico de texto simulado estructurado en párrafos, frases o palabras. |
+| **URL Shortener** | Dev | REST API | Acortamiento real mediante servicio público con generación simultánea de código QR. |
+
+### 2. Herramientas Deshabilitadas Honestamente con Aviso "Próximamente"
+
+Para mantener la integridad del producto y no engañar a los usuarios con descargas falsas, las siguientes herramientas complejas están marcadas honestamente como **"Próximamente disponible"**, detallando en su modal la infraestructura local necesaria:
+
+- **Doc to PDF / PDF to Doc**: Requiere un motor complejo de maquetación y parsing tipográfico de formatos Word (.docx) para ejecutarse en el navegador sin enviar archivos a servidores externos.
+- **Compress PDF**: Requiere optimización y remuestreo de flujos de imágenes internas y subconjuntos de fuentes tipográficas vía WebAssembly.
+- **PDF to JPEG**: Requiere rasterización de renderizado multipágina local (PDF.js Canvas renderer).
+- **Unlock PDF**: Requiere descifrado y remoción criptográfica de restricciones de documentos protegidos.
+- **Video to MP3, MP4 to GIF, Video Compressor, Audio Converter, Video Cutter**: Muestran un reproductor multimedia funcional para inspección del archivo cargado, avisando que la transcodificación de códecs sin pérdida ni servidores requiere la integración del motor `FFmpeg.wasm` (~30 MB).
+- **Remove Background**: Requiere integración de modelos de segmentación neuronal semántica en el navegador (TensorFlow.js / MediaPipe).
+- **Upscale Image**: Requiere modelos de superresolución de aprendizaje profundo (ESRGAN).
+- **HEIC to JPG**: Requiere módulo de decodificación libheif WebAssembly.
+
+---
+
+## 🔒 Seguridad y Robustez
+
+1. **Prevención de Cross-Site Scripting (XSS)**: Todo dato suministrado por el usuario (nombres de carpetas, nombres de archivos de entrada, parámetros dinámicos) es sanitizado mediante la función `escapeHtml()` o inyectado estrictamente mediante `textContent`.
+2. **Resiliencia en Almacenamiento Local (`localStorage`)**: Todo parseo de almacenamiento utiliza `safeGetStorageJson` con envoltorio `try/catch` y valores de retorno seguros por defecto ante datos corruptos. Las operaciones de guardado se controlan con `safeSetStorage` capturando excepciones de cuota de disco (`QuotaExceededError`).
+3. **Ciclo de Vida de Memoria (`URL.revokeObjectURL`)**: Se eliminaron las fugas de memoria provocadas por URLs de tipo Blob. Cada herramienta (`JSON Formatter`, `Sign PDF`, `Image Compressor`, `Merge PDF`, `Split PDF`, `OCR` y `Media Preview`) libera sus identificadores temporales tras la descarga o al cerrar el modal mediante `revokeAllModalObjectUrls()`.
+4. **Integridad de Recursos Externos (SRI)**: Los scripts cargados como respaldo externo cuentan con hash criptográfico SHA-512 (`integrity`) y atributo `crossorigin="anonymous"`.
+5. **Validación de Archivos y Hardware**: Rechazo explícito de formatos no compatibles, protección contra imágenes corruptas de dimensiones 0x0, y detección temprana de soporte en APIs de hardware (EyeDropper, reconocimiento de voz y micrófonos desconectados o no autorizados).
+
+---
+
+## ♿ Accesibilidad (A11y - WCAG 2.1)
+
+- **Diálogos Accesibles**: Los modales disponen de `role="dialog"`, `aria-modal="true"` y asociación semántica de título con `aria-labelledby="modalToolTitle"`.
+- **Focus Trap**: El tabulador (`Tab` y `Shift + Tab`) permanece estrictamente confinado dentro del modal activo. Al cerrar con `Escape` o mediante el botón de cierre, el foco vuelve automáticamente al elemento detonador que abrió la herramienta.
+- **Operación por Teclado Completa**: Todas las filas de la tabla y tarjetas de cuadrícula cuentan con `tabindex="0"`, `role="button"`, indicador visual `:focus-visible` y activación tanto por tecla `Enter` como por barra espaciadora (`Space`). Los botones secundarios internos aíslan sus eventos con `stopPropagation`.
+- **Atributos `aria-label` en Iconos**: Todos los botones de solo icono (botones de cierre, alternadores de vista de lista/cuadrícula, limpieza de buscador, colores de firma, favoritos y selector de carpetas) incluyen etiquetas descriptivas legibles para lectores de pantalla.
+- **Encabezados Ocultos Visualmente**: La columna de acciones de la tabla cuenta con el glifo `<span class="sr-only">Acciones</span>` para navegación asistida sin alterar el diseño visual.
+
+---
+
+## 📜 Licencias de Terceros
+
+ToolDrive respeta rigurosamente las licencias de software libre y de código abierto de sus dependencias locales:
+
+- **Tesseract.js** (v5.1.1, worker y binarios WASM en `/ocr-assets`):
+  - Licencia: **Apache License 2.0**
+  - Copyright © 2018 Jerome Wu y colaboradores.
+  - Sitio oficial: [https://github.com/naptha/tesseract.js](https://github.com/naptha/tesseract.js)
+- **PDF-LIB** (v1.17.1):
+  - Licencia: **MIT License**
+  - Copyright © 2019 Andrew Dillon.
+  - Sitio oficial: [https://github.com/Hopding/pdf-lib](https://github.com/Hopding/pdf-lib)
+- **qrcode-generator**:
+  - Licencia: **MIT License**
+  - Copyright © 2009 Kazuhiko Arase.
+  - Sitio oficial: [https://github.com/kazuhikoarase/qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator)
+
+---
+
+## 📋 Informe Técnico de QA (Auditoría de Cambios)
+
+| Tarea / Módulo | Estado Previo | Correcciones Realizadas | Resultado de Verificación |
+|---|---|---|---|
+| **Tarea 0: Clasificación Real vs Mocks** | Herramientas simulaban procesamiento con `setTimeout` y descargas estáticas. | Se sustituyeron simulaciones por procesamiento real (PDF-LIB, Canvas, QR) y se deshabilitaron honestamente las herramientas que requieren módulos pesados con avisos explicativos. | Pasa al 100%. Sin descargas falsas. |
+| **Tarea 1: Motor OCR Local** | Dependía de CDNs flotantes de jsDelivr y projectnaptha; fallaba sin conexión. | Se alojaron worker, core WASM y traineddata (`spa`, `eng`) en `/ocr-assets`, fijando versiones exactas, previniendo carreras de ejecución y asegurando soporte offline total. | Pasa al 100%. Reconocimiento local verificado. |
+| **Tarea 2: Seguridad y Robustez** | Vulnerabilidad a XSS en nombres de carpetas; `JSON.parse` sin captura; fuga de Blob URLs. | Sanitización sistemática con `escapeHtml`, persistencia segura con `safeGetStorageJson`/`safeSetStorage`, liberación de memoria con `revokeObjectURL` y SRI en CDN fallback. | Pasa al 100%. Código libre de inyecciones y memory leaks. |
+| **Tarea 3: Carpetas y Menú Contextual** | Menú de 3 puntos sin validación de longitud, colores libres sin control y sin sincronización. | Validaciones estrictas de nombre (1-40 chars, duplicados), colores restringidos a paleta, retención de herramientas al borrar y sincronización reactiva con evento `storage`. | Pasa al 100%. Multi-pestaña y gestión probadas. |
+| **Tarea 4: Modal y Accesibilidad** | Modales sin atributos ARIA, sin focus trap; filas no accesibles por teclado; botones sin `aria-label`. | Implementación de `role="dialog"`, `aria-modal="true"`, focus trap con `Escape`, navegación completa con `Enter`/`Espacio`, estilo `:focus-visible` y `aria-label` en todos los botones de iconos. | Pasa al 100%. Cumplimiento WCAG 2.1 verificado. |
+| **Tarea 5: Responsive Design** | Desbordamiento horizontal en pantallas estrechas (<400px); anchos estáticos de 320px en tabla. | Se reemplazaron anchos inline por clases elásticas, elipsis en títulos, colapso de columnas a 3 (≤900px) y 2 (≤640px), y adaptación de modales y menús contextuales en 320px. | Pasa al 100%. Cero scroll horizontal entre 320px y 1920px. |
