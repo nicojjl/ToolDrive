@@ -835,8 +835,71 @@ body.dark-theme .folder-more:focus-visible {
 .tool-card:focus-visible {
   outline: 2px solid var(--md-sys-color-primary);
   outline-offset: 2px;
-  background-color: #ffffff;
+  background-color: var(--md-sys-color-surface);
   box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}
+
+.tool-cell-btn {
+  background: transparent;
+  border: none;
+  font: inherit;
+  color: inherit;
+  padding: 0;
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  text-align: left;
+  border-radius: 6px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.tool-cell-btn:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 3px;
+}
+
+.tool-cell-btn .tool-name-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tool-card-title-btn {
+  background: transparent;
+  border: none;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--md-sys-color-on-surface);
+  padding: 0;
+  margin: 0;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 4px;
+  display: block;
+  width: 100%;
+}
+
+.tool-card-title-btn:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 3px;
+}
+
+.badge-soon {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background-color: var(--md-sys-color-surface-variant);
+  color: var(--md-sys-color-on-surface-variant);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  margin-left: 8px;
+  flex-shrink: 0;
 }
 
 .tool-card-top {
@@ -1434,6 +1497,18 @@ body.dark-theme .tool-card:hover {
   background-color: #282a2c;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
   border-color: #0b57d0;
+}
+
+body.dark-theme .tool-card:focus-visible {
+  background-color: #282a2c;
+  outline: 2px solid var(--md-sys-color-primary);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+}
+
+body.dark-theme .badge-soon {
+  background-color: #2b2d30;
+  color: #c4c7c5;
+  border-color: #444746;
 }
 
 body.dark-theme .tool-card-icon-wrap {

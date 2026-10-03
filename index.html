@@ -149,7 +149,7 @@
 
   <!-- ==================== MODAL DE GESTIÓN DE CARPETAS PERSONALIZADAS ==================== -->
   <div id="customFolderModalBackdrop" class="tool-modal-backdrop" onclick="handleStaticBackdropClick(event)">
-    <div class="tool-modal folder-modal-container">
+    <div class="tool-modal folder-modal-container" role="dialog" aria-modal="true" aria-labelledby="folderModalTitle">
       <div class="tool-modal-header">
         <div class="modal-header-left">
           <div class="modal-tool-icon" id="folderModalIcon">
@@ -175,7 +175,7 @@
 
   <!-- ==================== MODAL RÁPIDO ASIGNAR A CARPETA ==================== -->
   <div id="assignToolModalBackdrop" class="tool-modal-backdrop" onclick="handleStaticBackdropClick(event)">
-    <div class="tool-modal" style="max-width: 480px;">
+    <div class="tool-modal" style="max-width: 480px;" role="dialog" aria-modal="true" aria-labelledby="assignModalTitle">
       <div class="tool-modal-header">
         <div class="modal-header-left">
           <div class="modal-tool-icon" id="assignModalIcon">
@@ -230,7 +230,7 @@
 
   <!-- ==================== MODAL CAMBIAR NOMBRE DE CARPETA ==================== -->
   <div id="renameFolderModalBackdrop" class="tool-modal-backdrop" onclick="handleStaticBackdropClick(event)">
-    <div class="tool-modal" style="max-width: 440px;">
+    <div class="tool-modal" style="max-width: 440px;" role="dialog" aria-modal="true" aria-labelledby="renameFolderModalTitle">
       <div class="tool-modal-header">
         <div class="modal-header-left">
           <div class="modal-tool-icon" style="color: var(--md-sys-color-primary);">
@@ -239,7 +239,7 @@
             </svg>
           </div>
           <div>
-            <div class="modal-tool-title">Modificar nombre</div>
+            <div id="renameFolderModalTitle" class="modal-tool-title">Modificar nombre</div>
             <span class="modal-tool-category">Editar carpeta</span>
           </div>
         </div>
@@ -262,14 +262,14 @@
 
   <!-- ==================== MODAL CAMBIAR COLOR DE CARPETA ==================== -->
   <div id="changeColorFolderModalBackdrop" class="tool-modal-backdrop" onclick="handleStaticBackdropClick(event)">
-    <div class="tool-modal" style="max-width: 440px;">
+    <div class="tool-modal" style="max-width: 440px;" role="dialog" aria-modal="true" aria-labelledby="changeColorModalTitle">
       <div class="tool-modal-header">
         <div class="modal-header-left">
           <div class="modal-tool-icon" id="quickColorIcon">
             <svg viewBox="0 0 24 24" width="22" height="22" fill="#ea4335"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
           </div>
           <div>
-            <div class="modal-tool-title">Cambiar color</div>
+            <div id="changeColorModalTitle" class="modal-tool-title">Cambiar color</div>
             <span class="modal-tool-category">Color de carpeta</span>
           </div>
         </div>

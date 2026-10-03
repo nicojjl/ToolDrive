@@ -11,8 +11,8 @@ No requiere instalación de dependencias, compiladores, ni conexión a servidore
 ### Opción 1: Abrir directamente
 Haz doble clic en el archivo **`index.html`** para abrirlo en cualquier navegador web moderno (Google Chrome, Microsoft Edge, Mozilla Firefox o Safari).
 
-### Opción 2: Servidor local (opcional)
-Si prefieres servirlo mediante un servidor HTTP local para verificar capacidades de Web Workers y WebAssembly sin restricciones de políticas `file://`:
+### Opción 2: Servidor local (recomendado para Workers y WASM)
+Para ejecutar Web Workers y módulos WebAssembly sin restricciones de políticas de origen `file://`:
 ```bash
 # Con Python
 python -m http.server 8000
@@ -39,92 +39,97 @@ Luego visita `http://localhost:8000` en tu navegador.
 
 ---
 
-## 🛠️ Estado Real de las Herramientas (Auditoría Técnica)
+## 🛠️ Estado Real de las Herramientas (18 Activas / 12 en Desarrollo)
 
-A diferencia de versiones anteriores con simulaciones mediante temporizadores (*mocks*), ToolDrive clasifica de forma honesta y transparente sus 30 herramientas:
+De un total de 30 herramientas catalogadas, ToolDrive clasifica de forma transparente sus módulos: **18 herramientas activas con procesamiento real local** y **12 herramientas deshabilitadas temporalmente con insignia "Próximamente"** mientras se integran sus motores WASM correspondientes.
 
-### 1. Herramientas con Procesamiento REAL (100% Client-Side)
+### 1. Herramientas Activas con Procesamiento REAL (100% Client-Side)
 
-| Herramienta | Categoría | Motor / Tecnología | Descripción |
+| Herramienta | Categoría | Motor / Tecnología | Procesamiento Real Realizado |
 |---|---|---|---|
-| **OCR (Texto desde imagen)** | Texto | Tesseract.js (WASM local) | Extracción óptica de caracteres 100% offline alojada en `/ocr-assets`, modelos de idioma español e inglés, copia segura y descarga `.txt`. |
-| **Merge PDF (Unir PDF)** | PDF | PDF-LIB (`pdf-lib.min.js`) | Combina 2 o más archivos PDF reales en un único documento final generado en memoria local. |
-| **Split PDF (Dividir PDF)** | PDF | PDF-LIB (`pdf-lib.min.js`) | Permite extraer páginas individuales o rangos específicos (ej. 1-3, 5) generando un nuevo PDF válido. |
-| **Sign PDF (Firmar PDF)** | PDF | Canvas API + PDF-LIB | Pad de firma con captura táctil y de ratón (eventos pasivos cancelables), exportación a PNG transparente y estampado directo de firma en documentos PDF. |
-| **Image Compressor** | Imágenes | Canvas 2D API | Compresión y remuestreo real con selector de factor de calidad y cálculo exacto de reducción en KB. |
-| **Image Resizer** | Imágenes | Canvas 2D API | Redimensionamiento real de píxeles con preservación opcional de relación de aspecto. |
-| **Crop Image** | Imágenes | Canvas 2D API | Recorte gráfico interactivo en formatos 1:1, 16:9 o libre. |
-| **PNG to JPG / JPG to PNG / WebP to JPG / SVG to PNG** | Imágenes | Canvas 2D API | Transcodificación y rasterización gráfica real en el cliente. |
-| **QR Code Generator** | Dev | qrcode-generator (`qr-lib.js`) | Generación instantánea de códigos QR en lienzo y descarga en imagen PNG transparente. |
-| **Color Picker** | Dev | EyeDropper API + Canvas | Cuentagotas de pantalla nativo (con detección de compatibilidad de navegador) y conversión de valores HEX, RGB y HSL. |
-| **JSON Formatter** | Dev | JavaScript Engine | Validación de sintaxis, sangría estructurada a 2/4 espacios y minificación sin alterar datos. |
-| **Word Counter** | Texto | JavaScript Engine | Conteo reactivo en vivo de palabras, caracteres, párrafos y tiempo estimado de lectura. |
-| **Speech to Text** | Texto | Web Speech API | Transcripción de dictado por voz en tiempo real con control robusto de errores de permisos y micrófono. |
-| **Case Converter** | Texto | JavaScript Engine | Transformación de cadenas a 8 variantes (Mayúsculas, Minúsculas, Título, camelCase, snake_case, etc.). |
-| **Lorem Ipsum Generator** | Texto | JavaScript Engine | Generador paramétrico de texto simulado estructurado en párrafos, frases o palabras. |
-| **URL Shortener** | Dev | REST API | Acortamiento real mediante servicio público con generación simultánea de código QR. |
+| **Merge PDF (Unir PDF)** | PDF | PDF-LIB (`pdf-lib.min.js`) | Combina 2 o más documentos PDF en memoria local; detecta PDFs protegidos con contraseña y desactiva el botón de envío durante la operación. |
+| **Split PDF (Dividir PDF)** | PDF | PDF-LIB (`pdf-lib.min.js`) | Carga el documento, lee páginas y extrae rangos o páginas individuales generando un nuevo PDF válido en memoria. |
+| **Sign PDF (Firmar PDF)** | PDF | Canvas 2D + PDF-LIB | Captura de trazo digital táctil/ratón; exporta PNG transparente o estampa firma en PDF respetando la orientación y rotación angular de página (0°, 90°, 180°, 270°). |
+| **OCR (Texto desde imagen)** | Texto | Tesseract.js (WASM local) | Extracción de caracteres 100% offline alojada en `/ocr-assets`, modelos locales español e inglés, copia con fallback seguro y descarga `.txt`. |
+| **Image Compressor** | Imágenes | Canvas 2D API | Lectura de imagen y recodificación en JPEG/PNG/WebP con control deslizante de calidad y cálculo exacto de reducción en KB. |
+| **Image Resizer** | Imágenes | Canvas 2D API | Remuestreo en lienzo a dimensiones solicitadas, con validación de límite de seguridad (máximo 16384 px y área controlada). |
+| **Crop Image** | Imágenes | Canvas 2D API | Recorte gráfico a proporciones fijas (1:1, 16:9, 4:3) mediante extracción de sub-rectángulo en Canvas. |
+| **PNG to JPG** | Imágenes | Canvas 2D API | Conversión directa de formato rasterizado sobre fondo blanco sólido. |
+| **WebP to JPG** | Imágenes | Canvas 2D API | Decodificación y transcodificación de WebP a archivo JPEG descargable. |
+| **SVG to PNG** | Imágenes | Canvas 2D API | Rasterización de gráficos vectoriales SVG a mapa de bits PNG en lienzo. |
+| **QR Code Generator** | Dev | qrcodejs (`qr-lib.js`) | Generación algorítmica de matriz QR sobre canvas y descarga en imagen PNG. |
+| **URL Shortener** | Dev | is.gd API | Validación de protocolo HTTP/HTTPS, aviso visible de privacidad y consulta a la API pública de is.gd con generación de QR complementario. |
+| **Color Picker** | Dev | EyeDropper API + Canvas | Cuentagotas nativo del navegador (con mensaje explicativo si no es compatible) y conversión de valores HEX, RGB y HSL. |
+| **JSON Formatter** | Dev | JavaScript nativo | Validación de sintaxis en bloque `try/catch`, indentación a 2/4 espacios y minificación sin modificar valores. |
+| **Word Counter** | Texto | JavaScript nativo | Conteo en tiempo real de palabras, caracteres, párrafos y tiempo estimado de lectura mediante expresiones regulares. |
+| **Speech to Text** | Texto | Web Speech API | Dictado por voz en tiempo real con manejo de permisos denegados, micrófono ausente y compatibilidad de navegador. |
+| **Case Converter** | Texto | JavaScript nativo | Transformación de cadenas a Mayúsculas, Minúsculas, Título, camelCase, snake_case, kebab-case, etc. |
+| **Lorem Ipsum Generator** | Texto | JavaScript nativo | Generación paramétrica estructurada de párrafos, oraciones o palabras simuladas. |
 
-### 2. Herramientas Deshabilitadas Honestamente con Aviso "Próximamente"
+### 2. Herramientas Deshabilitadas Honestamente con Aviso "Próximamente" (12)
 
-Para mantener la integridad del producto y no engañar a los usuarios con descargas falsas, las siguientes herramientas complejas están marcadas honestamente como **"Próximamente disponible"**, detallando en su modal la infraestructura local necesaria:
+Las siguientes herramientas complejas no están simuladas con temporizadores ni generan descargas ficticias; muestran la insignia **"Próximamente"** en la interfaz y despliegan una explicación técnica de la dependencia local requerida:
 
-- **Doc to PDF / PDF to Doc**: Requiere un motor complejo de maquetación y parsing tipográfico de formatos Word (.docx) para ejecutarse en el navegador sin enviar archivos a servidores externos.
-- **Compress PDF**: Requiere optimización y remuestreo de flujos de imágenes internas y subconjuntos de fuentes tipográficas vía WebAssembly.
-- **PDF to JPEG**: Requiere rasterización de renderizado multipágina local (PDF.js Canvas renderer).
-- **Unlock PDF**: Requiere descifrado y remoción criptográfica de restricciones de documentos protegidos.
-- **Video to MP3, MP4 to GIF, Video Compressor, Audio Converter, Video Cutter**: Muestran un reproductor multimedia funcional para inspección del archivo cargado, avisando que la transcodificación de códecs sin pérdida ni servidores requiere la integración del motor `FFmpeg.wasm` (~30 MB).
-- **Remove Background**: Requiere integración de modelos de segmentación neuronal semántica en el navegador (TensorFlow.js / MediaPipe).
-- **Upscale Image**: Requiere modelos de superresolución de aprendizaje profundo (ESRGAN).
-- **HEIC to JPG**: Requiere módulo de decodificación libheif WebAssembly.
+- **Doc to PDF / PDF to Doc**: Requiere un motor tipográfico y maquetador de archivos Word (.docx) para ejecutarse en el navegador sin intermediarios.
+- **Compress PDF**: Requiere optimización y compresión de streams internos de objetos y fuentes tipográficas mediante WebAssembly.
+- **PDF to JPEG**: Requiere rasterización completa de páginas PDF en el cliente (PDF.js renderer).
+- **Unlock PDF**: Requiere motor criptográfico para eliminación de contraseñas de lectura y permisos en documentos PDF.
+- **Remove Background**: Requiere un modelo local de segmentación de imágenes por visión computacional (MediaPipe / TensorFlow.js ~40 MB).
+- **Upscale Image**: Requiere una red neuronal de superresolución de imágenes (ESRGAN WASM) para ampliar detalles sin pixelado simple.
+- **HEIC to JPG**: Requiere el decodificador WebAssembly `libheif` para navegadores que no incorporan códec HEIC en su sistema operativo.
+- **Video to MP3, MP4 to GIF, Video Compressor, Audio Converter, Video Cutter**: Muestran un reproductor HTML5 funcional del archivo cargado, indicando que la transcodificación y compresión local requiere el motor `FFmpeg.wasm` (~30 MB).
 
 ---
 
 ## 🔒 Seguridad y Robustez
 
-1. **Prevención de Cross-Site Scripting (XSS)**: Todo dato suministrado por el usuario (nombres de carpetas, nombres de archivos de entrada, parámetros dinámicos) es sanitizado mediante la función `escapeHtml()` o inyectado estrictamente mediante `textContent`.
+1. **Prevención de Cross-Site Scripting (XSS)**: Todo dato suministrado por el usuario (nombres de carpetas, nombres de archivos de entrada, parámetros dinámicos) es sanitizado mediante la función `escapeHtml()` o asignado estrictamente mediante `textContent`.
 2. **Resiliencia en Almacenamiento Local (`localStorage`)**: Todo parseo de almacenamiento utiliza `safeGetStorageJson` con envoltorio `try/catch` y valores de retorno seguros por defecto ante datos corruptos. Las operaciones de guardado se controlan con `safeSetStorage` capturando excepciones de cuota de disco (`QuotaExceededError`).
-3. **Ciclo de Vida de Memoria (`URL.revokeObjectURL`)**: Se eliminaron las fugas de memoria provocadas por URLs de tipo Blob. Cada herramienta (`JSON Formatter`, `Sign PDF`, `Image Compressor`, `Merge PDF`, `Split PDF`, `OCR` y `Media Preview`) libera sus identificadores temporales tras la descarga o al cerrar el modal mediante `revokeAllModalObjectUrls()`.
-4. **Integridad de Recursos Externos (SRI)**: Los scripts cargados como respaldo externo cuentan con hash criptográfico SHA-512 (`integrity`) y atributo `crossorigin="anonymous"`.
-5. **Validación de Archivos y Hardware**: Rechazo explícito de formatos no compatibles, protección contra imágenes corruptas de dimensiones 0x0, y detección temprana de soporte en APIs de hardware (EyeDropper, reconocimiento de voz y micrófonos desconectados o no autorizados).
+3. **Ciclo de Vida de Memoria (`URL.revokeObjectURL`)**: Cada herramienta (`JSON Formatter`, `Sign PDF`, `Image Compressor`, `Merge PDF`, `Split PDF`, `OCR` y `Media Preview`) libera sus identificadores temporales tras la descarga o al cerrar el modal mediante `revokeAllModalObjectUrls()`.
+4. **Integridad de Recursos Externos (SRI)**: El script de respaldo de `pdf-lib` cuenta con hash criptográfico SHA-512 real (`integrity="sha512-z8IYLHO8bTgFqj+yrPyIJnzBDf7DDhWwiEsk4sY+Oe6J2M+WQequeGS7qioI5vT6rXgVRb4K1UVQC5ER7MKzKQ=="`) y atributo `crossorigin="anonymous"`.
+5. **Validación de Archivos y Hardware**: Rechazo explícito de formatos no compatibles, protección contra imágenes de dimensiones 0x0 o superiores a 16384 px, y detección de soporte en APIs del navegador (EyeDropper, Web Speech API).
 
 ---
 
-## ♿ Accesibilidad (A11y - WCAG 2.1)
+## ♿ Accesibilidad (A11y)
 
-- **Diálogos Accesibles**: Los modales disponen de `role="dialog"`, `aria-modal="true"` y asociación semántica de título con `aria-labelledby="modalToolTitle"`.
+- **Diálogos Accesibles**: Los modales disponen de `role="dialog"`, `aria-modal="true"` y asociación semántica de título con `aria-labelledby`.
 - **Focus Trap**: El tabulador (`Tab` y `Shift + Tab`) permanece estrictamente confinado dentro del modal activo. Al cerrar con `Escape` o mediante el botón de cierre, el foco vuelve automáticamente al elemento detonador que abrió la herramienta.
-- **Operación por Teclado Completa**: Todas las filas de la tabla y tarjetas de cuadrícula cuentan con `tabindex="0"`, `role="button"`, indicador visual `:focus-visible` y activación tanto por tecla `Enter` como por barra espaciadora (`Space`). Los botones secundarios internos aíslan sus eventos con `stopPropagation`.
-- **Atributos `aria-label` en Iconos**: Todos los botones de solo icono (botones de cierre, alternadores de vista de lista/cuadrícula, limpieza de buscador, colores de firma, favoritos y selector de carpetas) incluyen etiquetas descriptivas legibles para lectores de pantalla.
-- **Encabezados Ocultos Visualmente**: La columna de acciones de la tabla cuenta con el glifo `<span class="sr-only">Acciones</span>` para navegación asistida sin alterar el diseño visual.
+- **Operación por Teclado**: Los elementos interactivos utilizan botones semánticos (`<button class="tool-cell-btn">`), soporte de teclas `Enter` y `Space`, e indicador visual `:focus-visible` adaptado para modos claro y oscuro.
+- **Atributos `aria-label` en Iconos**: Todos los botones de solo icono incluyen descripciones accesibles.
+- **Encabezados Ocultos Visualmente**: La columna de acciones de la tabla cuenta con el glifo `<span class="sr-only">Acciones</span>` para lectores de pantalla.
 
 ---
 
 ## 📜 Licencias de Terceros
 
-ToolDrive respeta rigurosamente las licencias de software libre y de código abierto de sus dependencias locales:
+ToolDrive utiliza las siguientes librerías de software libre y código abierto:
 
 - **Tesseract.js** (v5.1.1, worker y binarios WASM en `/ocr-assets`):
   - Licencia: **Apache License 2.0**
   - Copyright © 2018 Jerome Wu y colaboradores.
-  - Sitio oficial: [https://github.com/naptha/tesseract.js](https://github.com/naptha/tesseract.js)
+  - Repositorio: [https://github.com/naptha/tesseract.js](https://github.com/naptha/tesseract.js)
 - **PDF-LIB** (v1.17.1):
   - Licencia: **MIT License**
   - Copyright © 2019 Andrew Dillon.
-  - Sitio oficial: [https://github.com/Hopding/pdf-lib](https://github.com/Hopding/pdf-lib)
-- **qrcode-generator**:
+  - Repositorio: [https://github.com/Hopding/pdf-lib](https://github.com/Hopding/pdf-lib)
+- **qrcodejs** (`qr-lib.js`):
   - Licencia: **MIT License**
-  - Copyright © 2009 Kazuhiko Arase.
-  - Sitio oficial: [https://github.com/kazuhikoarase/qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator)
+  - Basado en el algoritmo de Kazuhiko Arase y davidshimjs/qrcodejs.
+  - Repositorio: [https://github.com/davidshimjs/qrcodejs](https://github.com/davidshimjs/qrcodejs)
 
 ---
 
 ## 📋 Informe Técnico de QA (Auditoría de Cambios)
 
-| Tarea / Módulo | Estado Previo | Correcciones Realizadas | Resultado de Verificación |
+| Tarea / Módulo | Estado Previo | Cambio | Probado en navegador |
 |---|---|---|---|
-| **Tarea 0: Clasificación Real vs Mocks** | Herramientas simulaban procesamiento con `setTimeout` y descargas estáticas. | Se sustituyeron simulaciones por procesamiento real (PDF-LIB, Canvas, QR) y se deshabilitaron honestamente las herramientas que requieren módulos pesados con avisos explicativos. | Pasa al 100%. Sin descargas falsas. |
-| **Tarea 1: Motor OCR Local** | Dependía de CDNs flotantes de jsDelivr y projectnaptha; fallaba sin conexión. | Se alojaron worker, core WASM y traineddata (`spa`, `eng`) en `/ocr-assets`, fijando versiones exactas, previniendo carreras de ejecución y asegurando soporte offline total. | Pasa al 100%. Reconocimiento local verificado. |
-| **Tarea 2: Seguridad y Robustez** | Vulnerabilidad a XSS en nombres de carpetas; `JSON.parse` sin captura; fuga de Blob URLs. | Sanitización sistemática con `escapeHtml`, persistencia segura con `safeGetStorageJson`/`safeSetStorage`, liberación de memoria con `revokeObjectURL` y SRI en CDN fallback. | Pasa al 100%. Código libre de inyecciones y memory leaks. |
-| **Tarea 3: Carpetas y Menú Contextual** | Menú de 3 puntos sin validación de longitud, colores libres sin control y sin sincronización. | Validaciones estrictas de nombre (1-40 chars, duplicados), colores restringidos a paleta, retención de herramientas al borrar y sincronización reactiva con evento `storage`. | Pasa al 100%. Multi-pestaña y gestión probadas. |
-| **Tarea 4: Modal y Accesibilidad** | Modales sin atributos ARIA, sin focus trap; filas no accesibles por teclado; botones sin `aria-label`. | Implementación de `role="dialog"`, `aria-modal="true"`, focus trap con `Escape`, navegación completa con `Enter`/`Espacio`, estilo `:focus-visible` y `aria-label` en todos los botones de iconos. | Pasa al 100%. Cumplimiento WCAG 2.1 verificado. |
-| **Tarea 5: Responsive Design** | Desbordamiento horizontal en pantallas estrechas (<400px); anchos estáticos de 320px en tabla. | Se reemplazaron anchos inline por clases elásticas, elipsis en títulos, colapso de columnas a 3 (≤900px) y 2 (≤640px), y adaptación de modales y menús contextuales en 320px. | Pasa al 100%. Cero scroll horizontal entre 320px y 1920px. |
+| **Clasificación Real vs Mocks** | Varias herramientas simulaban procesamiento con `setTimeout` y descargas de texto estático. | Eliminación de simulaciones; separación explícita de 18 herramientas activas con procesamiento real y 12 deshabilitadas con aviso "Próximamente". | Sí |
+| **Motor OCR Offline** | Dependía de CDNs externas de jsDelivr y projectnaptha; fallaba sin conexión y presentaba condiciones de carrera. | Alojamiento local de worker, core WASM y diccionarios `spa`/`eng` en `/ocr-assets`, rutas absolutas con `new URL()`, cancelación de worker pendiente y control de carreras con `ocrRunId`. | Sí |
+| **Seguridad XSS y Almacenamiento** | Inyecciones potenciales en plantillas de carpetas; `JSON.parse` vulnerable a cadenas sin escapar; fugas de Blobs. | Uso exhaustivo de `escapeHtml()`, simetría en `safeSetStorage`/`safeGetStorageJson` con serialización JSON, liberación con `revokeObjectURL` y hash SRI SHA-512 real para pdf-lib. | Sí |
+| **Carpetas y Menú Contextual** | Menú de 3 puntos sin validación de longitud, sin teclado ni sincronización entre pestañas. | Validación de nombre (1-40 caracteres, duplicados), colores restringidos a paleta, cierre con `Escape`/clic fuera y sincronización mediante evento `storage`. | Sí |
+| **Accesibilidad (A11y)** | Modales sin `role="dialog"` ni focus trap; `role="button"` en `<tr>`; foco poco visible en modo oscuro. | Atributos `role="dialog"`, focus trap con `Escape`, botones nativos en celdas de tabla, y estilos `:focus-visible` basados en variables CSS para temas claro y oscuro. | Sí |
+| **Diseño Responsive** | Desbordamiento horizontal en pantallas estrechas (<400px); columnas rígidas. | Anchos elásticos, elipsis en textos largos, colapso dinámico de columnas (≤900px y ≤640px) y modales utilizables a 320px de ancho. | Sí |
+| **URL Shortener** | Sin aviso de servicio externo ni validación formal de URL; fallback no funcional. | Aviso visible de envío a API pública de is.gd, validación con `new URL()` para HTTP/HTTPS y eliminación de fallback no CORS. | Sí |
+| **Sign PDF y Merge PDF** | Firma no consideraba rotación de página PDF; Merge PDF no informaba si los PDFs tenían contraseña. | Firma ajusta coordenadas y ángulo (`PDFLib.degrees`) según la rotación de página (0°, 90°, 180°, 270°); Merge PDF detecta PDFs cifrados y gestiona estado del botón con `finally`. | Sí |
+| **Image Resizer** | Sin límite máximo de dimensiones en campos de entrada. | Restricción de ancho y alto hasta 16384 px y control de área total máxima. | Sí |

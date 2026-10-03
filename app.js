@@ -41,7 +41,8 @@ const TOOLS = [
     reason: "Conversión de alta precisión de oficina",
     location: "PDFs y Documentos",
     formats: ".docx, .pdf",
-    iconType: "doc"
+    iconType: "doc",
+    disabled: true
   },
   {
     id: "merge-pdf",
@@ -74,7 +75,8 @@ const TOOLS = [
     reason: "Optimización de peso para adjuntar en correo",
     location: "PDFs y Documentos",
     formats: ".pdf",
-    iconType: "pdf"
+    iconType: "pdf",
+    disabled: true
   },
   {
     id: "pdf-to-jpeg",
@@ -85,7 +87,8 @@ const TOOLS = [
     reason: "Extracción gráfica para presentaciones",
     location: "PDFs y Documentos",
     formats: ".pdf → .jpg",
-    iconType: "pdf"
+    iconType: "pdf",
+    disabled: true
   },
   {
     id: "sign-pdf",
@@ -107,7 +110,8 @@ const TOOLS = [
     reason: "Desbloqueo de documentos protegidos",
     location: "PDFs y Documentos",
     formats: ".pdf",
-    iconType: "pdf"
+    iconType: "pdf",
+    disabled: true
   },
 
   // --- Categoría 2: Edición y Conversión de Imágenes ---
@@ -131,7 +135,8 @@ const TOOLS = [
     reason: "Aislamiento de producto y retratos",
     location: "Imágenes",
     formats: ".png, .jpg",
-    iconType: "image"
+    iconType: "image",
+    disabled: true
   },
   {
     id: "image-compress",
@@ -175,7 +180,8 @@ const TOOLS = [
     reason: "Compatibilidad multiplataforma de Apple a PC",
     location: "Imágenes",
     formats: ".heic → .jpg",
-    iconType: "image"
+    iconType: "image",
+    disabled: true
   },
   {
     id: "svg-to-png",
@@ -204,11 +210,12 @@ const TOOLS = [
     category: "image",
     categoryName: "Imágenes",
     title: "Upscale Image (Agrandar imagen)",
-    desc: "Aumenta la resolución 2x o 4x y mejora la nitidez de imágenes pequeñas mediante filtros de superresolución.",
+    desc: "Aumenta el tamaño en píxeles (2x o 4x) para fotos o ilustraciones pequeñas.",
     reason: "Recuperación de detalles en fotos pequeñas",
     location: "Imágenes",
     formats: ".jpg, .png",
-    iconType: "image"
+    iconType: "image",
+    disabled: true
   },
 
   // --- Categoría 3: Audio y Video ---
@@ -221,7 +228,8 @@ const TOOLS = [
     reason: "Extracción de música, conferencias y podcasts",
     location: "Audio y Video",
     formats: ".mp4 → .mp3",
-    iconType: "video"
+    iconType: "video",
+    disabled: true
   },
   {
     id: "mp4-to-gif",
@@ -232,7 +240,8 @@ const TOOLS = [
     reason: "Creación de memes y clips animados",
     location: "Audio y Video",
     formats: ".mp4 → .gif",
-    iconType: "video"
+    iconType: "video",
+    disabled: true
   },
   {
     id: "video-compress",
@@ -243,7 +252,8 @@ const TOOLS = [
     reason: "Envío sin límites en mensajería móvil",
     location: "Audio y Video",
     formats: ".mp4, .mov",
-    iconType: "video"
+    iconType: "video",
+    disabled: true
   },
   {
     id: "audio-converter",
@@ -254,7 +264,8 @@ const TOOLS = [
     reason: "Transcodificación universal de audio",
     location: "Audio y Video",
     formats: ".mp3, .wav, .flac...",
-    iconType: "audio"
+    iconType: "audio",
+    disabled: true
   },
   {
     id: "video-cutter",
@@ -265,7 +276,8 @@ const TOOLS = [
     reason: "Edición rápida de clips sin instalar software",
     location: "Audio y Video",
     formats: ".mp4, .mov, .webm",
-    iconType: "video"
+    iconType: "video",
+    disabled: true
   },
 
   // --- Categoría 4: Texto y Productividad ---
@@ -387,17 +399,21 @@ function safeGetStorageJson(key, defaultValue) {
   try {
     const raw = localStorage.getItem(key);
     if (raw === null || raw === undefined) return defaultValue;
-    const parsed = JSON.parse(raw);
-    return parsed !== null && parsed !== undefined ? parsed : defaultValue;
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed !== null && parsed !== undefined ? parsed : defaultValue;
+    } catch {
+      return raw;
+    }
   } catch (err) {
-    console.warn(`[ToolDrive] Error al parsear "${key}" desde localStorage:`, err);
+    console.warn(`[ToolDrive] Error al leer "${key}" desde localStorage:`, err);
     return defaultValue;
   }
 }
 
 function safeSetStorage(key, value) {
   try {
-    const serialized = typeof value === "string" ? value : JSON.stringify(value);
+    const serialized = JSON.stringify(value);
     localStorage.setItem(key, serialized);
     return true;
   } catch (err) {
@@ -411,20 +427,61 @@ function safeSetStorage(key, value) {
   }
 }
 
+const FOLDER_COLORS = ["#ea4335", "#1a73e8", "#34a853", "#f9ab00", "#9c27b0", "#009688", "#e91e63", "#ff6d00"];
+
+function isValidFolderColor(color) {
+  if (typeof color !== "string") return false;
+  const trimmed = color.trim().toLowerCase();
+  const allowed = FOLDER_COLORS.map(c => c.toLowerCase());
+  if (allowed.includes(trimmed)) return true;
+  return /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(trimmed);
+}
+
+function sanitizeCustomFolders(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter(cf => cf && typeof cf === "object" && typeof cf.id === "string" && cf.id.startsWith("custom_"))
+    .map(cf => ({
+      id: cf.id,
+      name: typeof cf.name === "string" ? cf.name.trim().slice(0, 40) : "Carpeta",
+      color: isValidFolderColor(cf.color) ? cf.color : "#ea4335",
+      tools: Array.isArray(cf.tools) ? cf.tools.filter(t => typeof t === "string") : []
+    }));
+}
+
+function sanitizeDefaultFolderOverrides(raw) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const clean = {};
+  for (const [k, v] of Object.entries(raw)) {
+    if (["pdf", "image", "media", "text", "dev"].includes(k) && v && typeof v === "object") {
+      clean[k] = {
+        name: typeof v.name === "string" ? v.name.trim().slice(0, 40) : undefined,
+        color: isValidFolderColor(v.color) ? v.color : undefined
+      };
+    }
+  }
+  return clean;
+}
+
 // ==================== APP STATE ====================
 let currentCategory = "all";
 let currentSearch = "";
 let currentView = "list"; // "list" | "grid"
-let favorites = safeGetStorageJson("tooldrive_favorites", []);
-let recentTools = safeGetStorageJson("tooldrive_recents", []);
-let quickNotes = "";
-try {
-  quickNotes = localStorage.getItem("tooldrive_notes") || "";
-} catch(e) {}
+let favorites = Array.isArray(safeGetStorageJson("tooldrive_favorites", []))
+  ? safeGetStorageJson("tooldrive_favorites", []).filter(t => typeof t === "string")
+  : [];
+let recentTools = Array.isArray(safeGetStorageJson("tooldrive_recents", []))
+  ? safeGetStorageJson("tooldrive_recents", []).filter(t => typeof t === "string")
+  : [];
+let quickNotes = safeGetStorageJson("tooldrive_notes", "");
 
 // Custom Folders State
-let customFolders = safeGetStorageJson("tooldrive_custom_folders", null);
-if (!customFolders || !Array.isArray(customFolders)) {
+let rawCustomFolders = safeGetStorageJson("tooldrive_custom_folders", null);
+let customFolders = null;
+if (Array.isArray(rawCustomFolders)) {
+  customFolders = sanitizeCustomFolders(rawCustomFolders);
+}
+if (!customFolders || customFolders.length === 0) {
   customFolders = [
     {
       id: "custom_ejemplo1",
@@ -437,10 +494,11 @@ if (!customFolders || !Array.isArray(customFolders)) {
 }
 
 // Default Folders Overrides & Hidden Folders State
-let defaultFolderOverrides = safeGetStorageJson("tooldrive_default_folder_overrides", {});
-let hiddenFolders = safeGetStorageJson("tooldrive_hidden_folders", []);
+let defaultFolderOverrides = sanitizeDefaultFolderOverrides(safeGetStorageJson("tooldrive_default_folder_overrides", {}));
+let hiddenFolders = Array.isArray(safeGetStorageJson("tooldrive_hidden_folders", []))
+  ? safeGetStorageJson("tooldrive_hidden_folders", []).filter(f => typeof f === "string")
+  : [];
 
-const FOLDER_COLORS = ["#ea4335", "#1a73e8", "#34a853", "#f9ab00", "#9c27b0", "#009688", "#e91e63", "#ff6d00"];
 let currentContextMenuFolderId = null;
 let quickSelectedColor = "#ea4335";
 
@@ -481,13 +539,6 @@ function getFolderInfo(folderId) {
   return null;
 }
 
-function isValidFolderColor(color) {
-  if (typeof color !== "string") return false;
-  const trimmed = color.trim().toLowerCase();
-  const allowed = FOLDER_COLORS.map(c => c.toLowerCase());
-  if (allowed.includes(trimmed)) return true;
-  return /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(trimmed);
-}
 
 function validateFolderName(rawName, targetFolderId = null) {
   const name = (rawName || "").trim();
@@ -641,7 +692,7 @@ function renderSidebarNav() {
       const isActive = currentCategory === cf.id ? "active" : "";
       html += `
         <div class="nav-item ${isActive}" data-category="${cf.id}">
-          <span class="nav-icon" style="color: ${cf.color};">${ICONS.folder}</span>
+          <span class="nav-icon" style="color: ${escapeHtml(cf.color)};">${ICONS.folder}</span>
           <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(cf.name)}</span>
           <span class="badge">${cf.tools.length}</span>
         </div>
@@ -665,29 +716,34 @@ function renderFolders() {
   if (!foldersContainer) return;
 
   const baseDefaultFolders = [
-    { id: "pdf", defaultName: "Gestión de PDF", defaultColor: "#ea4335", count: "7 herramientas", sub: "Documentos oficiales" },
-    { id: "image", defaultName: "Edición de Imágenes", defaultColor: "#34a853", count: "9 herramientas", sub: "Fotos y gráficos" },
-    { id: "media", defaultName: "Audio y Video", defaultColor: "#9c27b0", count: "5 herramientas", sub: "Formatos multimedia" },
-    { id: "text", defaultName: "Texto y Productividad", defaultColor: "#f57c00", count: "5 herramientas", sub: "OCR y redacción" },
-    { id: "dev", defaultName: "Web y Desarrollador", defaultColor: "#1a73e8", count: "4 herramientas", sub: "QR, Colores y JSON" }
+    { id: "pdf", defaultName: "Gestión de PDF", defaultColor: "#ea4335", sub: "Documentos oficiales" },
+    { id: "image", defaultName: "Edición de Imágenes", defaultColor: "#34a853", sub: "Fotos y gráficos" },
+    { id: "media", defaultName: "Audio y Video", defaultColor: "#9c27b0", sub: "Formatos multimedia" },
+    { id: "text", defaultName: "Texto y Productividad", defaultColor: "#f57c00", sub: "OCR y redacción" },
+    { id: "dev", defaultName: "Web y Desarrollador", defaultColor: "#1a73e8", sub: "QR, Colores y JSON" }
   ];
 
   const activeDefaultFolders = baseDefaultFolders
     .filter(f => !hiddenFolders.includes(f.id))
-    .map(f => ({
-      ...f,
-      name: defaultFolderOverrides[f.id]?.name || f.defaultName,
-      color: defaultFolderOverrides[f.id]?.color || f.defaultColor
-    }));
+    .map(f => {
+      const activeCount = TOOLS.filter(t => t.category === f.id && !t.disabled).length;
+      const totalCount = TOOLS.filter(t => t.category === f.id).length;
+      return {
+        ...f,
+        name: defaultFolderOverrides[f.id]?.name || f.defaultName,
+        color: isValidFolderColor(defaultFolderOverrides[f.id]?.color) ? defaultFolderOverrides[f.id].color : f.defaultColor,
+        count: `${activeCount} activas (${totalCount} total)`
+      };
+    });
 
   let html = activeDefaultFolders.map(f => `
     <div class="folder-card ${currentCategory === f.id ? 'active' : ''}" onclick="setCategory('${f.id}')">
-      <div class="folder-icon" style="color: ${f.color}">
+      <div class="folder-icon" style="color: ${escapeHtml(f.color)}">
         ${ICONS.folder}
       </div>
       <div class="folder-info">
         <div class="folder-name">${escapeHtml(f.name)}</div>
-        <div class="folder-meta">${f.count}</div>
+        <div class="folder-meta">${escapeHtml(f.count)}</div>
       </div>
       <button type="button" class="folder-more" id="folderMoreBtn_${f.id}" aria-label="Opciones de carpeta ${escapeHtml(f.name)}" aria-haspopup="menu" aria-expanded="false" onclick="openFolderContextMenu('${f.id}', event)" onkeydown="handleFolderMoreKeydown('${f.id}', event)" title="Opciones de carpeta">
         ${ICONS.more}
@@ -700,7 +756,7 @@ function renderFolders() {
     const isActive = currentCategory === cf.id ? 'active' : '';
     html += `
       <div class="folder-card folder-card-custom ${isActive}" onclick="setCategory('${cf.id}')">
-        <div class="folder-icon" style="color: ${cf.color}">
+        <div class="folder-icon" style="color: ${escapeHtml(cf.color)}">
           ${ICONS.folder}
         </div>
         <div class="folder-info">
@@ -775,7 +831,7 @@ function renderTools() {
       headerHtml = `
         <div class="custom-folder-header-bar">
           <div class="custom-folder-title-wrap">
-            <div class="custom-folder-icon-circle" style="color: ${activeFolder.color};">
+            <div class="custom-folder-icon-circle" style="color: ${escapeHtml(activeFolder.color)};">
               ${ICONS.folder}
             </div>
             <div>
@@ -803,7 +859,7 @@ function renderTools() {
       const activeFolder = customFolders.find(cf => cf.id === currentCategory);
       listContainer.innerHTML = headerHtml + `
         <div class="custom-folder-empty-state">
-          <div class="empty-icon" style="color: ${activeFolder ? activeFolder.color : '#ea4335'};">${ICONS.folder}</div>
+          <div class="empty-icon" style="color: ${escapeHtml(activeFolder ? activeFolder.color : '#ea4335')};">${ICONS.folder}</div>
           <h3>Esta carpeta está vacía</h3>
           <p>Añade las herramientas que más utilizas para tenerlas organizadas y a mano.</p>
           <button class="ui-btn ui-btn-primary" onclick="openAddToolsToFolderModal('${currentCategory}')" style="margin-top: 14px;">
@@ -845,20 +901,23 @@ function renderTools() {
       const isStarred = favorites.includes(tool.id);
       const isInFolder = customFolders.some(f => f.tools.includes(tool.id));
       tableHtml += `
-        <tr class="tool-row" tabindex="0" role="button" aria-label="Abrir herramienta: ${escapeHtml(tool.title)}" onclick="openToolModal('${tool.id}')" onkeydown="handleToolCardKeydown('${tool.id}', event)">
+        <tr class="tool-row" onclick="openToolModal('${tool.id}')">
           <td>
             <div class="tool-name-cell">
-              <span class="tool-file-icon">${getFileIcon(tool.iconType)}</span>
-              <span>${tool.title}</span>
+              <button type="button" class="tool-cell-btn" onclick="openToolModal('${tool.id}')" aria-label="Abrir herramienta: ${escapeHtml(tool.title)}">
+                <span class="tool-file-icon">${getFileIcon(tool.iconType)}</span>
+                <span class="tool-name-text">${escapeHtml(tool.title)}</span>
+              </button>
+              ${tool.disabled ? '<span class="badge-soon">Próximamente</span>' : ''}
             </div>
           </td>
           <td>
-            <div class="tool-reason-cell" title="${tool.desc}">${tool.reason}</div>
+            <div class="tool-reason-cell" title="${escapeHtml(tool.desc)}">${escapeHtml(tool.reason)}</div>
           </td>
           <td>
             <div class="tool-location-cell">
               ${ICONS.folder}
-              <span>${tool.location}</span>
+              <span>${escapeHtml(tool.location)}</span>
             </div>
           </td>
           <td class="tool-actions-cell" onclick="event.stopPropagation()">
@@ -888,17 +947,21 @@ function renderTools() {
       const isStarred = favorites.includes(tool.id);
       const isInFolder = customFolders.some(f => f.tools.includes(tool.id));
       gridHtml += `
-        <div class="tool-card" tabindex="0" role="button" aria-label="Abrir herramienta: ${escapeHtml(tool.title)}" onclick="openToolModal('${tool.id}')" onkeydown="handleToolCardKeydown('${tool.id}', event)">
+        <div class="tool-card" onclick="openToolModal('${tool.id}')">
           <div class="tool-card-top">
             <div class="tool-card-icon-wrap">
               ${getFileIcon(tool.iconType)}
             </div>
-            <span class="tool-card-badge">${tool.formats}</span>
+            ${tool.disabled ? '<span class="badge-soon">Próximamente</span>' : `<span class="tool-card-badge">${escapeHtml(tool.formats)}</span>`}
           </div>
-          <div class="tool-card-title">${tool.title}</div>
-          <div class="tool-card-desc">${tool.desc}</div>
+          <div class="tool-card-title">
+            <button type="button" class="tool-card-title-btn" onclick="openToolModal('${tool.id}')" aria-label="Abrir herramienta: ${escapeHtml(tool.title)}">
+              ${escapeHtml(tool.title)}
+            </button>
+          </div>
+          <div class="tool-card-desc">${escapeHtml(tool.desc)}</div>
           <div class="tool-card-footer" onclick="event.stopPropagation()">
-            <span style="font-size: 11px; color: #747775;">${tool.categoryName}</span>
+            <span style="font-size: 11px; color: var(--md-sys-color-on-surface-variant);">${escapeHtml(tool.categoryName)}</span>
             <div style="display: flex; align-items: center; gap: 4px;">
               <button class="folder-assign-btn ${isInFolder ? 'has-folders' : ''}" onclick="openAssignToolModal('${tool.id}', event)" onkeydown="event.stopPropagation()" title="Organizar en carpetas" aria-label="Organizar ${escapeHtml(tool.title)} en carpetas">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
@@ -928,7 +991,8 @@ function setCategory(cat) {
   // Update banner title
   const bannerTitle = document.getElementById("welcomeTitle");
   if (bannerTitle) {
-    if (cat === "all") bannerTitle.innerHTML = "Te damos la bienvenida a <strong>ToolDrive</strong>";
+    const activeCount = TOOLS.filter(t => !t.disabled).length;
+    if (cat === "all") bannerTitle.innerHTML = `Te damos la bienvenida a <strong>ToolDrive</strong> <span style="font-size: 13px; font-weight: normal; color: var(--md-sys-color-on-surface-variant); display: block; margin-top: 4px;">${activeCount} herramientas activas client-side (30 en total)</span>`;
     else if (cat === "favorites") bannerTitle.innerHTML = "Herramientas <strong>Destacadas</strong>";
     else if (cat === "recents") bannerTitle.innerHTML = "Herramientas <strong>Recientes</strong>";
     else {
@@ -1039,10 +1103,7 @@ function showToast(message) {
 
 // ==================== TEMA OSCURO / CLARO (iOS SWITCH) ====================
 function initTheme() {
-  let savedTheme = null;
-  try {
-    savedTheme = localStorage.getItem("tooldrive_theme");
-  } catch (e) {}
+  const savedTheme = safeGetStorageJson("tooldrive_theme", null);
   const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
 
   const isDark = savedTheme === "dark" || (!savedTheme && prefersDark);
@@ -1173,19 +1234,47 @@ window.closeToolModal = function() {
   }
 };
 
-// ==================== MODAL FOCUS TRAP & ESCAPE KEY ====================
+// ==================== MODAL FOCUS TRAP & ESCAPE KEY (ALL MODALS) ====================
+function getActiveModalBackdrop() {
+  const backdropIds = [
+    { id: "renameFolderModalBackdrop", close: () => window.closeRenameFolderModal() },
+    { id: "changeColorFolderModalBackdrop", close: () => window.closeChangeColorFolderModal() },
+    { id: "assignToolModalBackdrop", close: () => window.closeAssignToolModal() },
+    { id: "customFolderModalBackdrop", close: () => window.closeFolderModal() },
+    { id: "toolModalBackdrop", close: () => window.closeToolModal() }
+  ];
+  for (const b of backdropIds) {
+    const el = document.getElementById(b.id);
+    if (el && el.classList.contains("open")) {
+      return { el, close: b.close };
+    }
+  }
+  return null;
+}
+
 document.addEventListener("keydown", (e) => {
-  const backdrop = document.getElementById("toolModalBackdrop");
-  if (!backdrop || !backdrop.classList.contains("open")) return;
+  // 1. Si el menú contextual de carpetas está abierto, Escape lo cierra prioritariamente
+  const menu = document.getElementById("folderContextMenu");
+  if (menu && menu.style.display === "block") {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      closeFolderContextMenu(true);
+      return;
+    }
+  }
+
+  // 2. Comprobar si hay algún modal abierto
+  const activeBackdrop = getActiveModalBackdrop();
+  if (!activeBackdrop) return;
 
   if (e.key === "Escape") {
     e.preventDefault();
-    closeToolModal();
+    activeBackdrop.close();
     return;
   }
 
   if (e.key === "Tab") {
-    const modal = backdrop.querySelector(".tool-modal");
+    const modal = activeBackdrop.el.querySelector(".tool-modal");
     if (!modal) return;
 
     const focusables = Array.from(modal.querySelectorAll(
@@ -1229,7 +1318,10 @@ window.handleStaticBackdropClick = function(event) {
 // ==================== CUSTOM FOLDERS MANAGEMENT ====================
 let selectedFolderColor = "#ea4335";
 
+let lastFocusedFolderModalTrigger = null;
+
 window.openNewFolderModal = function(editFolderId = null) {
+  lastFocusedFolderModalTrigger = document.activeElement;
   const backdrop = document.getElementById("customFolderModalBackdrop");
   const modalTitle = document.getElementById("folderModalTitle");
   const modalIcon = document.getElementById("folderModalIcon");
@@ -1244,7 +1336,7 @@ window.openNewFolderModal = function(editFolderId = null) {
   const isEditing = !!existingFolder;
   modalTitle.innerText = isEditing ? "Editar Carpeta Personalizada" : "Nueva Carpeta Personalizada";
   selectedFolderColor = isEditing ? existingFolder.color : "#ea4335";
-  modalIcon.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22" fill="${selectedFolderColor}"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>`;
+  modalIcon.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22" fill="${escapeHtml(selectedFolderColor)}"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>`;
 
   const initialTools = isEditing ? existingFolder.tools : [];
 
@@ -1259,7 +1351,7 @@ window.openNewFolderModal = function(editFolderId = null) {
       <label class="ui-control-label">Color de la carpeta</label>
       <div class="color-picker-palette" id="folderColorPalette">
         ${FOLDER_COLORS.map(c => `
-          <div class="color-dot ${c === selectedFolderColor ? 'active' : ''}" style="background-color: ${c};" onclick="selectFolderColor('${c}')" data-color="${c}"></div>
+          <div class="color-dot ${c === selectedFolderColor ? 'active' : ''}" style="background-color: ${escapeHtml(c)};" onclick="selectFolderColor('${escapeHtml(c)}')" data-color="${escapeHtml(c)}"></div>
         `).join("")}
       </div>
     </div>
@@ -1283,8 +1375,8 @@ window.openNewFolderModal = function(editFolderId = null) {
               <input type="checkbox" id="chk_tool_${t.id}" value="${t.id}" ${isChecked ? 'checked' : ''} onclick="event.stopPropagation(); updateToolCheckboxVisual(this);" />
               <div class="tool-file-icon">${getFileIcon(t.iconType)}</div>
               <div class="tool-checkbox-info">
-                <div class="tool-checkbox-title">${t.title}</div>
-                <div class="tool-checkbox-cat">${t.categoryName}</div>
+                <div class="tool-checkbox-title">${escapeHtml(t.title)}</div>
+                <div class="tool-checkbox-cat">${escapeHtml(t.categoryName)}</div>
               </div>
             </div>
           `;
@@ -1317,6 +1409,10 @@ window.openNewFolderModal = function(editFolderId = null) {
 window.closeFolderModal = function() {
   const backdrop = document.getElementById("customFolderModalBackdrop");
   if (backdrop) backdrop.classList.remove("open");
+  if (lastFocusedFolderModalTrigger && typeof lastFocusedFolderModalTrigger.focus === "function") {
+    try { lastFocusedFolderModalTrigger.focus(); } catch (e) {}
+    lastFocusedFolderModalTrigger = null;
+  }
 };
 
 window.selectFolderColor = function(color) {
@@ -1326,7 +1422,7 @@ window.selectFolderColor = function(color) {
   });
   const icon = document.getElementById("folderModalIcon");
   if (icon) {
-    icon.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22" fill="${color}"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.89 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>`;
+    icon.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22" fill="${escapeHtml(color)}"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>`;
   }
 };
 
@@ -1445,10 +1541,11 @@ window.openAddToolsToFolderModal = function(folderId) {
 };
 
 // ==================== ASSIGN TOOL TO FOLDERS QUICK MODAL ====================
-let currentAssignToolId = null;
+let lastFocusedAssignTrigger = null;
 
 window.openAssignToolModal = function(toolId, event) {
   if (event) event.stopPropagation();
+  lastFocusedAssignTrigger = document.activeElement;
   currentAssignToolId = toolId;
   const tool = TOOLS.find(t => t.id === toolId);
   if (!tool) return;
@@ -1477,7 +1574,7 @@ window.openAssignToolModal = function(toolId, event) {
   } else {
     bodyHtml = `
       <p style="font-size: 13px; color: var(--md-sys-color-on-surface-variant); margin-bottom: 12px;">
-        Marca las carpetas donde deseas incluir <strong>${tool.title}</strong>:
+        Marca las carpetas donde deseas incluir <strong>${escapeHtml(tool.title)}</strong>:
       </p>
       <div class="tools-selection-container" style="max-height: 220px;">
         ${customFolders.map(cf => {
@@ -1485,7 +1582,7 @@ window.openAssignToolModal = function(toolId, event) {
           return `
             <div class="tool-checkbox-item ${isIncluded ? 'checked' : ''}" onclick="toggleToolInFolder('${cf.id}', '${tool.id}', this, event)">
               <input type="checkbox" id="chk_assign_${cf.id}" ${isIncluded ? 'checked' : ''} onclick="event.stopPropagation(); toggleToolInFolderDirect('${cf.id}', '${tool.id}', this);" />
-              <div class="tool-file-icon" style="color: ${cf.color};">${ICONS.folder}</div>
+              <div class="tool-file-icon" style="color: ${escapeHtml(cf.color)};">${ICONS.folder}</div>
               <div class="tool-checkbox-info">
                 <div class="tool-checkbox-title">${escapeHtml(cf.name)}</div>
                 <div class="tool-checkbox-cat">${cf.tools.length} ${cf.tools.length === 1 ? 'herramienta' : 'herramientas'}</div>
@@ -1508,12 +1605,20 @@ window.openAssignToolModal = function(toolId, event) {
   `;
 
   backdrop.classList.add("open");
+  setTimeout(() => {
+    const btn = footer.querySelector("button");
+    if (btn) btn.focus();
+  }, 60);
 };
 
 window.closeAssignToolModal = function() {
   const backdrop = document.getElementById("assignToolModalBackdrop");
   if (backdrop) backdrop.classList.remove("open");
   currentAssignToolId = null;
+  if (lastFocusedAssignTrigger && typeof lastFocusedAssignTrigger.focus === "function") {
+    try { lastFocusedAssignTrigger.focus(); } catch (e) {}
+    lastFocusedAssignTrigger = null;
+  }
 };
 
 window.toggleToolInFolder = function(folderId, toolId, rowElement, event) {
@@ -1552,12 +1657,19 @@ window.openFolderContextMenu = function(folderId, event, focusFirstItem = false)
     event.preventDefault();
   }
 
+  const menu = document.getElementById("folderContextMenu");
+  if (!menu) return;
+
+  // Si ya estaba abierto para esta misma carpeta, alternar (cerrar)
+  if (menu.style.display !== "none" && currentContextMenuFolderId === folderId) {
+    closeFolderContextMenu(false);
+    return;
+  }
+
   // Cerrar cualquier menú previo sin restaurar foco aún
   closeFolderContextMenu(false);
 
   currentContextMenuFolderId = folderId;
-  const menu = document.getElementById("folderContextMenu");
-  if (!menu) return;
 
   const btn = document.getElementById(`folderMoreBtn_${folderId}`) || event?.currentTarget || event?.target?.closest(".folder-more");
   lastFocusedFolderMoreBtn = btn || null;
@@ -1621,12 +1733,21 @@ window.closeFolderContextMenu = function(restoreFocus = false) {
   if (lastFocusedFolderMoreBtn) {
     lastFocusedFolderMoreBtn.setAttribute("aria-expanded", "false");
     if (restoreFocus) {
-      lastFocusedFolderMoreBtn.focus();
+      try { lastFocusedFolderMoreBtn.focus(); } catch (e) {}
     }
   }
 };
 
 window.handleFolderMoreKeydown = function(folderId, event) {
+  const menu = document.getElementById("folderContextMenu");
+  if (event.key === "Escape") {
+    if (menu && menu.style.display !== "none") {
+      event.preventDefault();
+      event.stopPropagation();
+      closeFolderContextMenu(true);
+      return;
+    }
+  }
   if (event.key === "Enter" || event.key === " " || event.key === "ArrowDown") {
     event.preventDefault();
     event.stopPropagation();
@@ -1821,10 +1942,12 @@ window.restoreAllFolders = function() {
 // Listeners globales para cerrar menú contextual (clic fuera, Esc, scroll)
 document.addEventListener("click", (e) => {
   const menu = document.getElementById("folderContextMenu");
-  if (menu && menu.style.display !== "none" && !menu.contains(e.target)) {
-    closeFolderContextMenu(false);
+  if (menu && menu.style.display !== "none") {
+    if (!menu.contains(e.target) && !e.target.closest(".folder-more")) {
+      closeFolderContextMenu(false);
+    }
   }
-});
+}, true);
 
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
@@ -1897,7 +2020,8 @@ window.addEventListener("storage", (e) => {
   switch (e.key) {
     case "tooldrive_custom_folders":
       try {
-        customFolders = JSON.parse(e.newValue || "[]");
+        const parsed = JSON.parse(e.newValue || "[]");
+        customFolders = sanitizeCustomFolders(parsed);
         renderSidebarNav();
         renderFolders();
         renderTools();
@@ -1908,7 +2032,8 @@ window.addEventListener("storage", (e) => {
 
     case "tooldrive_default_folder_overrides":
       try {
-        defaultFolderOverrides = JSON.parse(e.newValue || "{}");
+        const parsed = JSON.parse(e.newValue || "{}");
+        defaultFolderOverrides = sanitizeDefaultFolderOverrides(parsed);
         renderSidebarNav();
         renderFolders();
         renderTools();
@@ -1919,7 +2044,8 @@ window.addEventListener("storage", (e) => {
 
     case "tooldrive_hidden_folders":
       try {
-        hiddenFolders = JSON.parse(e.newValue || "[]");
+        const parsed = JSON.parse(e.newValue || "[]");
+        hiddenFolders = Array.isArray(parsed) ? parsed.filter(f => typeof f === "string") : [];
         renderSidebarNav();
         renderFolders();
         renderTools();
@@ -1930,7 +2056,8 @@ window.addEventListener("storage", (e) => {
 
     case "tooldrive_favorites":
       try {
-        favorites = JSON.parse(e.newValue || "[]");
+        const parsed = JSON.parse(e.newValue || "[]");
+        favorites = Array.isArray(parsed) ? parsed.filter(t => typeof t === "string") : [];
         renderTools();
         renderSidebarNav();
       } catch (err) {
@@ -1940,12 +2067,21 @@ window.addEventListener("storage", (e) => {
 
     case "tooldrive_recents":
       try {
-        recentTools = JSON.parse(e.newValue || "[]");
+        const parsed = JSON.parse(e.newValue || "[]");
+        recentTools = Array.isArray(parsed) ? parsed.filter(t => typeof t === "string") : [];
         if (currentCategory === "recents") {
           renderTools();
         }
       } catch (err) {
         console.error("Error al sincronizar recientes:", err);
+      }
+      break;
+
+    case "tooldrive_notes":
+      try {
+        quickNotes = JSON.parse(e.newValue || '""');
+      } catch {
+        quickNotes = e.newValue || "";
       }
       break;
   }
@@ -2565,8 +2701,8 @@ function buildToolWorkspace(tool, container, footer) {
           <label class="ui-control-label">Ingresa la URL larga que deseas acortar:</label>
           <input type="url" id="shortenerInput" class="ui-input" placeholder="https://ejemplo-muy-largo.com/articulo?ref=tooldrive" value="https://google.com">
         </div>
-        <div style="font-size: 12px; color: var(--md-sys-color-on-surface-variant); margin-bottom: 14px;">
-          Genera un enlace corto real y permanente mediante la API pública de <strong>is.gd</strong> sin necesidad de registro.
+        <div style="background: var(--md-sys-color-surface-variant); border: 1px solid var(--md-sys-color-outline-variant); border-radius: 8px; padding: 10px 14px; font-size: 12px; color: var(--md-sys-color-on-surface-variant); margin-bottom: 14px; line-height: 1.4;">
+          🔒 <strong>Aviso de privacidad y servicio externo:</strong> Esta herramienta envía la dirección web ingresada a la API pública de <strong>is.gd</strong> para crear el enlace corto permanente. Ningún otro dato de tu sesión es transmitido.
         </div>
 
         <div id="shortResultBox" style="display: none; padding: 16px; border-radius: 12px; background: var(--md-sys-color-surface-variant); border: 1px solid var(--md-sys-color-outline-variant); margin-top: 14px;">
@@ -2592,12 +2728,21 @@ function buildToolWorkspace(tool, container, footer) {
       `;
 
       window.generateShortUrl = async function() {
-        const longUrl = document.getElementById("shortenerInput").value.trim();
-        if (!longUrl || !longUrl.match(/^https?:\/\//i)) {
-          showToast("Ingresa una URL completa válida (iniciando con http:// o https://)");
+        const rawInput = document.getElementById("shortenerInput").value.trim();
+        let parsed;
+        try {
+          parsed = new URL(rawInput);
+        } catch (e) {
+          showToast("Ingresa una URL completa y válida (ej. https://ejemplo.com)");
           return;
         }
 
+        if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+          showToast("El enlace debe utilizar protocolo HTTP o HTTPS");
+          return;
+        }
+
+        const longUrl = parsed.href;
         const btn = document.getElementById("btnShortenSubmit");
         if (btn) {
           btn.setAttribute("disabled", "true");
@@ -2823,9 +2968,36 @@ function buildToolWorkspace(tool, container, footer) {
 
           targetPages.forEach(p => {
             const { width, height } = p.getSize();
+            const rot = ((p.getRotation()?.angle || 0) % 360 + 360) % 360;
+            let transform;
+            if (rot === 90) {
+              transform = {
+                x: width - 45,
+                y: height - 40 - sigW,
+                rotate: PDFLib.degrees(90)
+              };
+            } else if (rot === 180) {
+              transform = {
+                x: 40 + sigW,
+                y: height - 45 + sigH,
+                rotate: PDFLib.degrees(180)
+              };
+            } else if (rot === 270) {
+              transform = {
+                x: 45,
+                y: 40 + sigW,
+                rotate: PDFLib.degrees(270)
+              };
+            } else {
+              transform = {
+                x: width - sigW - 40,
+                y: 45,
+                rotate: PDFLib.degrees(0)
+              };
+            }
+
             p.drawImage(signatureImage, {
-              x: width - sigW - 40,
-              y: 45,
+              ...transform,
               width: sigW,
               height: sigH
             });
@@ -2854,32 +3026,26 @@ function buildToolWorkspace(tool, container, footer) {
       break;
     }
 
-    // ---------------- IMAGE RESIZER & COMPRESSOR & CONVERTER (PNG/JPG/WEBP/SVG/CROP) ----------------
+    // ---------------- REAL IMAGE PROCESSING (PNG/JPG/WEBP/SVG/RESIZE/COMPRESS/CROP) ----------------
     case "png-to-jpg":
     case "webp-to-jpg":
     case "svg-to-png":
-    case "heic-to-jpg":
     case "image-compress":
     case "image-resize":
-    case "crop-image":
-    case "remove-bg":
-    case "upscale-image": {
-      const isConvert = ["png-to-jpg", "webp-to-jpg", "svg-to-png", "heic-to-jpg"].includes(tool.id);
+    case "crop-image": {
       const isResize = tool.id === "image-resize";
       const isCrop = tool.id === "crop-image";
-      const isRemoveBg = tool.id === "remove-bg";
-      const isUpscale = tool.id === "upscale-image";
 
       let formatTarget = "image/jpeg";
       let extTarget = ".jpg";
-      if (tool.id === "svg-to-png" || isRemoveBg) { formatTarget = "image/png"; extTarget = ".png"; }
+      if (tool.id === "svg-to-png") { formatTarget = "image/png"; extTarget = ".png"; }
 
       container.innerHTML = `
         <div class="ui-dropzone" id="imgDropzone" onclick="document.getElementById('imgFileInput').click()">
-          <input type="file" id="imgFileInput" style="display: none;" accept="image/*,.heic,.svg">
+          <input type="file" id="imgFileInput" style="display: none;" accept="image/*,.svg">
           <div class="ui-dropzone-icon">${ICONS.image}</div>
           <div class="ui-dropzone-title">Selecciona o arrastra una imagen</div>
-          <div class="ui-dropzone-sub">Compatible con PNG, JPG, WebP, SVG o HEIC</div>
+          <div class="ui-dropzone-sub">Compatible con PNG, JPG, WebP o SVG</div>
         </div>
 
         <div id="imgPreviewSection" style="display: none;">
@@ -2892,11 +3058,11 @@ function buildToolWorkspace(tool, container, footer) {
               ${isResize ? `
                 <div class="ui-control-group">
                   <label class="ui-control-label">Ancho (px):</label>
-                  <input type="number" id="resizeWidth" class="ui-input" min="1" value="800">
+                  <input type="number" id="resizeWidth" class="ui-input" min="1" max="16384" value="800">
                 </div>
                 <div class="ui-control-group">
                   <label class="ui-control-label">Alto (px):</label>
-                  <input type="number" id="resizeHeight" class="ui-input" min="1" value="600">
+                  <input type="number" id="resizeHeight" class="ui-input" min="1" max="16384" value="600">
                 </div>
               ` : ''}
 
@@ -2907,30 +3073,6 @@ function buildToolWorkspace(tool, container, footer) {
                     <option value="1">1:1 (Cuadrado / Instagram)</option>
                     <option value="1.777" selected>16:9 (Panorámico / Banner)</option>
                     <option value="1.333">4:3 (Estándar)</option>
-                  </select>
-                </div>
-              ` : ''}
-
-              ${isRemoveBg ? `
-                <div class="ui-control-group">
-                  <label class="ui-control-label">Tolerancia de fondo (Chroma Key):</label>
-                  <input type="range" id="bgTolerance" class="ui-slider" min="10" max="90" value="30">
-                </div>
-                <div style="font-size: 12px; color: #444746;">Eliminación de fondo uniforme o monocromático (toma de referencia la esquina superior izquierda).</div>
-              ` : ''}
-
-              ${tool.id === "heic-to-jpg" ? `
-                <div style="font-size: 12px; color: var(--md-sys-color-on-surface-variant); background: var(--md-sys-color-surface-variant); padding: 8px 12px; border-radius: 8px; margin-bottom: 10px; border: 1px solid var(--md-sys-color-outline-variant);">
-                  ℹ️ Compatible de forma nativa en navegadores con códec HEIC (Safari iOS/macOS).
-                </div>
-              ` : ''}
-
-              ${isUpscale ? `
-                <div class="ui-control-group">
-                  <label class="ui-control-label">Factor de aumento:</label>
-                  <select id="upscaleFactor" class="ui-select">
-                    <option value="2" selected>2x (Duplicar resolución y nitidez)</option>
-                    <option value="4">4x (Superresolución Ultra HD)</option>
                   </select>
                 </div>
               ` : ''}
@@ -2972,10 +3114,9 @@ function buildToolWorkspace(tool, container, footer) {
       function handleFile(file) {
         if (!file) return;
 
-        const isHeic = file.name.toLowerCase().endsWith(".heic") || (file.type && file.type.includes("heic"));
-        const isGraphic = file.type.startsWith("image/") || isHeic || file.name.match(/\.(jpe?g|png|webp|gif|svg|bmp|heic)$/i);
+        const isGraphic = file.type.startsWith("image/") || file.name.match(/\.(jpe?g|png|webp|gif|svg|bmp)$/i);
         if (!isGraphic) {
-          showToast("Archivo no válido: por favor selecciona una imagen gráfica (PNG, JPG, WebP, SVG o HEIC)");
+          showToast("Archivo no válido: por favor selecciona una imagen gráfica (PNG, JPG, WebP o SVG)");
           return;
         }
 
@@ -3001,11 +3142,7 @@ function buildToolWorkspace(tool, container, footer) {
             }
           };
           img.onerror = () => {
-            if (isHeic) {
-              showToast("Tu navegador actual no soporta decodificación nativa de HEIC (compatible con Safari)");
-            } else {
-              showToast("No se pudo decodificar la imagen seleccionada");
-            }
+            showToast("No se pudo decodificar la imagen seleccionada");
           };
           img.src = e.target.result;
         };
@@ -3040,12 +3177,20 @@ function buildToolWorkspace(tool, container, footer) {
             else if (hInput) hInput.focus();
             return;
           }
+
+          const MAX_DIM = 16384;
+          const MAX_AREA = 16384 * 16384; // 268,435,456 px
+          if (wVal > MAX_DIM || hVal > MAX_DIM) {
+            showToast(`Dimensiones excesivas: el ancho y alto no pueden superar ${MAX_DIM} px`);
+            return;
+          }
+          if (wVal * hVal > MAX_AREA) {
+            showToast("El área total de la imagen supera el límite de memoria permitido");
+            return;
+          }
+
           targetW = wVal;
           targetH = hVal;
-        } else if (isUpscale) {
-          const factor = parseInt(document.getElementById("upscaleFactor").value) || 2;
-          targetW = loadedImage.width * factor;
-          targetH = loadedImage.height * factor;
         } else if (isCrop) {
           const ratio = parseFloat(document.getElementById("cropRatio").value) || 1.777;
           if (targetW / targetH > ratio) {
@@ -3073,22 +3218,6 @@ function buildToolWorkspace(tool, container, footer) {
         }
 
         ctx.drawImage(loadedImage, 0, 0, targetW, targetH);
-
-        if (isRemoveBg) {
-          const imgData = ctx.getImageData(0, 0, targetW, targetH);
-          const data = imgData.data;
-          // Simple chroma key based on top-left corner
-          const r0 = data[0], g0 = data[1], b0 = data[2];
-          const tol = (parseInt(document.getElementById("bgTolerance").value) || 30) * 2.5;
-
-          for (let i = 0; i < data.length; i += 4) {
-            const dist = Math.hypot(data[i] - r0, data[i+1] - g0, data[i+2] - b0);
-            if (dist < tol) {
-              data[i + 3] = 0; // Transparent
-            }
-          }
-          ctx.putImageData(imgData, 0, 0);
-        }
 
         canvas.toBlob((blob) => {
           if (!blob) {
@@ -3261,7 +3390,13 @@ function buildToolWorkspace(tool, container, footer) {
           setTimeout(() => closeToolModal(), 600);
         } catch (err) {
           console.error("Error al unir PDFs:", err);
-          showToast("Error al procesar los documentos PDF. Verifica que no tengan contraseñas.");
+          const isEncrypted = err && (err.name === "EncryptedPDFError" || /encrypted|password|decrypt/i.test(err.message || ""));
+          if (isEncrypted) {
+            showToast("Uno o más PDFs están protegidos con contraseña. Desbloquéalos antes de unirlos.");
+          } else {
+            showToast("Error al procesar los documentos PDF. Verifica que sean archivos válidos.");
+          }
+        } finally {
           btnExec.removeAttribute("disabled");
           btnExec.innerText = "Unir Documentos";
         }
@@ -3436,11 +3571,14 @@ function buildToolWorkspace(tool, container, footer) {
       break;
     }
 
-    // ---------------- PDF TOOLS EN DESARROLLO (DOC TO PDF, COMPRESS, UNLOCK, PDF TO JPEG) ----------------
+    // ---------------- HERRAMIENTAS EN DESARROLLO (PDF & IMÁGENES COMPLEJAS) ----------------
     case "doc-to-pdf":
     case "compress-pdf":
     case "pdf-to-jpeg":
-    case "unlock-pdf": {
+    case "unlock-pdf":
+    case "remove-bg":
+    case "upscale-image":
+    case "heic-to-jpg": {
       let explanation = "";
       if (tool.id === "doc-to-pdf") {
         explanation = "La conversión directa de archivos Word (.doc/.docx) a PDF requiere un motor de maquetación avanzada que actualmente se encuentra en desarrollo para ejecutarse 100% en el cliente sin servidores externos.";
@@ -3450,6 +3588,12 @@ function buildToolWorkspace(tool, container, footer) {
         explanation = "La renderización y rasterización de páginas PDF completas a imágenes JPEG de alta definición está en desarrollo con motor local.";
       } else if (tool.id === "unlock-pdf") {
         explanation = "La remoción de restricciones y descifrado de seguridad criptográfica de documentos PDF estará disponible en la próxima actualización.";
+      } else if (tool.id === "remove-bg") {
+        explanation = "La segmentación inteligente de sujetos y eliminación de fondo requiere un modelo de visión por computadora local (MediaPipe / TensorFlow.js ~40 MB) en preparación para no enviar tus fotos a servidores externos.";
+      } else if (tool.id === "upscale-image") {
+        explanation = "El escalado de imágenes con superresolución requiere una red neuronal convolucional (ESRGAN WASM) en desarrollo para su ejecución local segura.";
+      } else if (tool.id === "heic-to-jpg") {
+        explanation = "La decodificación universal de fotos HEIC (Apple) en cualquier navegador requiere la integración de un decodificador WebAssembly (libheif) sin depender de Safari.";
       }
 
       container.innerHTML = `
@@ -3609,6 +3753,7 @@ function buildToolWorkspace(tool, container, footer) {
 
       let currentOcrObjectUrl = null;
       let activeTesseractWorker = null;
+      let pendingWorkerPromise = null;
       let ocrRunId = 0;
       let ocrProgressTimeout = null;
 
@@ -3620,9 +3765,16 @@ function buildToolWorkspace(tool, container, footer) {
       }
 
       window.cleanOcrResources = function() {
+        ocrRunId++;
         if (activeTesseractWorker) {
           try { activeTesseractWorker.terminate(); } catch (e) {}
           activeTesseractWorker = null;
+        }
+        if (pendingWorkerPromise) {
+          pendingWorkerPromise.then(w => {
+            try { if (w) w.terminate(); } catch (e) {}
+          }).catch(() => {});
+          pendingWorkerPromise = null;
         }
         revokeCurrentOcrObjectUrl();
         if (ocrProgressTimeout) {
@@ -3701,10 +3853,13 @@ function buildToolWorkspace(tool, container, footer) {
 
           updateOcrProgress(15, "Inicializando modelos de lenguaje locales...");
 
-          const worker = await Tesseract.createWorker(lang, 1, {
-            workerPath: 'ocr-assets/worker.min.js',
-            corePath: 'ocr-assets',
-            langPath: 'ocr-assets',
+          const ocrAssetsBasePath = new URL('ocr-assets/', window.location.href).href;
+          const ocrWorkerPath = new URL('ocr-assets/worker.min.js', window.location.href).href;
+
+          const workerPromise = Tesseract.createWorker(lang, 1, {
+            workerPath: ocrWorkerPath,
+            corePath: ocrAssetsBasePath,
+            langPath: ocrAssetsBasePath,
             gzip: false,
             logger: m => {
               if (runId !== ocrRunId) return;
@@ -3723,6 +3878,12 @@ function buildToolWorkspace(tool, container, footer) {
               }
             }
           });
+
+          pendingWorkerPromise = workerPromise;
+          const worker = await workerPromise;
+          if (pendingWorkerPromise === workerPromise) {
+            pendingWorkerPromise = null;
+          }
 
           if (runId !== ocrRunId) {
             try { await worker.terminate(); } catch (e) {}
