@@ -39,9 +39,9 @@ Luego visita `http://localhost:8000` en tu navegador.
 
 ---
 
-## 🛠️ Estado Real de las Herramientas (24 Activas / 6 en Desarrollo)
+## 🛠️ Estado Real de las Herramientas (29 Activas / 1 en Desarrollo)
 
-De un total de 30 herramientas catalogadas, ToolDrive clasifica de forma transparente sus módulos: **24 herramientas activas con procesamiento real local** y **6 herramientas deshabilitadas temporalmente con insignia "Próximamente"** mientras se integran sus motores WASM correspondientes.
+De un total de 30 herramientas catalogadas, ToolDrive clasifica de forma transparente sus módulos: **29 herramientas activas con procesamiento real local** y **1 herramienta deshabilitada temporalmente con insignia "Próximamente"** mientras se integra su motor correspondiente.
 
 ### 1. Herramientas Activas con Procesamiento REAL (100% Client-Side)
 
@@ -63,6 +63,11 @@ De un total de 30 herramientas catalogadas, ToolDrive clasifica de forma transpa
 | **PNG to JPG** | Imágenes | Canvas 2D API | Conversión directa de formato rasterizado sobre fondo blanco sólido. |
 | **WebP to JPG** | Imágenes | Canvas 2D API | Decodificación y transcodificación de WebP a archivo JPEG descargable. |
 | **SVG to PNG** | Imágenes | Canvas 2D API | Rasterización de gráficos vectoriales SVG a mapa de bits PNG en lienzo. |
+| **Video to MP3** | Multimedia | FFmpeg.wasm (`libs/ffmpeg/`) | Extracción de audio en MP3 mediante motor `libmp3lame` en WebAssembly monohilo; bitrates de 128, 192 y 320 kbps; barra de progreso real, previsualización en reproductor y cancelación reactiva. |
+| **Audio Converter** | Multimedia | FFmpeg.wasm (`libs/ffmpeg/`) | Transcodificación de audio client-side entre formatos populares (MP3, WAV, FLAC, M4A/AAC, OGG) con códecs integrados en WebAssembly y previsualización de audio. |
+| **Video Cutter (Cortar Video)** | Multimedia | FFmpeg.wasm (`libs/ffmpeg/`) | Recorte local de video con vista previa interactiva; selector de marcas temporales manual o sincronizado con el reproductor; modo rápido (`-c copy` en keyframes) y modo preciso con recodificación. |
+| **MP4 to GIF** | Multimedia | FFmpeg.wasm (`libs/ffmpeg/`) | Conversión de fragmentos de video a GIF animado de alta fidelidad con generación de paleta de 2 pasos (`palettegen/paletteuse`), control de resolución (320px a 640px), FPS (10 a 20 fps), límite de seguridad de 15 segundos y aviso de peso estimado. |
+| **Video Compressor** | Multimedia | FFmpeg.wasm (`libs/ffmpeg/`) | Compresión de video en H.264 + AAC con presets (Ligero CRF 23, Medio CRF 28 720p, WhatsApp CRF 32 480p); comparador de tamaño antes/después con porcentaje de reducción; límite de 500 MB y botón para cancelar el proceso. |
 | **QR Code Generator** | Dev | qrcodejs (`qr-lib.js`) | Generación algorítmica de matriz QR sobre canvas y descarga en imagen PNG. |
 | **URL Shortener** | Dev | is.gd API | Validación de protocolo HTTP/HTTPS, aviso visible de privacidad y consulta a la API pública de is.gd con generación de QR complementario. |
 | **Color Picker** | Dev | EyeDropper API + Canvas | Cuentagotas nativo del navegador (con mensaje explicativo si no es compatible) y conversión de valores HEX, RGB y HSL. |
@@ -72,12 +77,11 @@ De un total de 30 herramientas catalogadas, ToolDrive clasifica de forma transpa
 | **Case Converter** | Texto | JavaScript nativo | Transformación de cadenas a Mayúsculas, Minúsculas, Título, camelCase, snake_case, kebab-case, etc. |
 | **Lorem Ipsum Generator** | Texto | JavaScript nativo | Generación paramétrica estructurada de párrafos, oraciones o palabras simuladas. |
 
-### 2. Herramientas Deshabilitadas Honestamente con Aviso "Próximamente" (6)
+### 2. Herramientas Deshabilitadas Honestamente con Aviso "Próximamente" (1)
 
-Las siguientes 6 herramientas complejas no están simuladas con temporizadores ni generan descargas ficticias; muestran la insignia **"Próximamente"** en la interfaz y despliegan una explicación técnica de la dependencia local requerida:
+La siguiente herramienta compleja no está simulada con temporizadores ni genera descargas ficticias; muestra la insignia **"Próximamente"** en la interfaz y despliega una explicación técnica de la dependencia local requerida:
 
 - **Remove Background**: Requiere un modelo local de segmentación de imágenes por visión computacional (MediaPipe / TensorFlow.js ~40 MB).
-- **Video to MP3, MP4 to GIF, Video Compressor, Audio Converter, Video Cutter**: Muestran un reproductor HTML5 funcional del archivo cargado, indicando que la transcodificación y compresión local requiere el motor `FFmpeg.wasm` (~30 MB).
 
 ---
 
@@ -85,9 +89,9 @@ Las siguientes 6 herramientas complejas no están simuladas con temporizadores n
 
 1. **Prevención de Cross-Site Scripting (XSS)**: Todo dato suministrado por el usuario (nombres de carpetas, nombres de archivos de entrada, parámetros dinámicos) es sanitizado mediante la función `escapeHtml()` o asignado estrictamente mediante `textContent`.
 2. **Resiliencia en Almacenamiento Local (`localStorage`)**: Todo parseo de almacenamiento utiliza `safeGetStorageJson` con envoltorio `try/catch` y valores de retorno seguros por defecto ante datos corruptos. Las operaciones de guardado se controlan con `safeSetStorage` capturando excepciones de cuota de disco (`QuotaExceededError`).
-3. **Ciclo de Vida de Memoria (`URL.revokeObjectURL`)**: Cada herramienta (`JSON Formatter`, `Sign PDF`, `Image Compressor`, `Merge PDF`, `Split PDF`, `OCR`, `PDF to JPEG`, `HEIC to JPG`, `Upscale Image`, `Compress PDF` y `Media Preview`) libera sus identificadores temporales tras la descarga o al cerrar el modal mediante `revokeAllModalObjectUrls()`.
+3. **Ciclo de Vida de Memoria (`URL.revokeObjectURL` y FS virtual)**: Cada herramienta (`JSON Formatter`, `Sign PDF`, `Image Compressor`, `Merge PDF`, `Split PDF`, `OCR`, `PDF to JPEG`, `HEIC to JPG`, `Upscale Image`, `Compress PDF`, `Doc to PDF`, `Video to MP3`, `Audio Converter`, `Video Cutter`, `MP4 to GIF`, `Video Compressor` y previsualizaciones multimedia) libera sus identificadores temporales tras la descarga o al cerrar el modal mediante `revokeAllModalObjectUrls()`. Asimismo, las operaciones de `FFmpeg.wasm` ejecutan `deleteFile` en el sistema de archivos virtual para liberar memoria de inmediato.
 4. **Integridad de Recursos Externos (SRI)**: El script de respaldo de `pdf-lib` cuenta con hash criptográfico SHA-512 real (`integrity="sha512-z8IYLHO8bTgFqj+yrPyIJnzBDf7DDhWwiEsk4sY+Oe6J2M+WQequeGS7qioI5vT6rXgVRb4K1UVQC5ER7MKzKQ=="`) y atributo `crossorigin="anonymous"`.
-5. **Validación de Archivos y Hardware**: Rechazo explícito de formatos no compatibles, protección contra imágenes de dimensiones 0x0 o superiores a 16384 px / 33 MP, y detección de soporte en APIs del navegador (EyeDropper, Web Speech API).
+5. **Validación de Archivos y Hardware**: Rechazo explícito de formatos no compatibles, protección contra imágenes de dimensiones 0x0 o superiores a 16384 px / 33 MP, límite de 500 MB en video y detección de soporte en APIs del navegador (EyeDropper, Web Speech API).
 
 ---
 
@@ -105,6 +109,10 @@ Las siguientes 6 herramientas complejas no están simuladas con temporizadores n
 
 ToolDrive utiliza las siguientes librerías de software libre y código abierto:
 
+- **FFmpeg.wasm** (`@ffmpeg/ffmpeg` v0.12.15 y `@ffmpeg/core` v0.12.10, en `/libs/ffmpeg`):
+  - Licencia: **MIT License** (envoltorio `@ffmpeg/ffmpeg`) y **LGPL v2.1+** (núcleo WebAssembly monohilo de FFmpeg con `libmp3lame`, `libx264`, `libvorbis`, `flac`, `aac`).
+  - Copyright © 2020-2024 Jerome Wu y FFmpeg contributors.
+  - Repositorio: [https://github.com/ffmpegwasm/ffmpeg.wasm](https://github.com/ffmpegwasm/ffmpeg.wasm) y [https://github.com/ffmpegwasm/ffmpeg.wasm-core](https://github.com/ffmpegwasm/ffmpeg.wasm-core)
 - **qpdf-wasm** (v0.0.2, en `/libs/qpdf`):
   - Licencia: **Apache License 2.0**
   - Copyright © 2022 @jspawn y Jay Berkenbilt (QPDF).
@@ -156,7 +164,12 @@ ToolDrive utiliza las siguientes librerías de software libre y código abierto:
 
 | Tarea / Módulo | Estado Previo | Cambio | Probado en navegador |
 |---|---|---|---|
-| **Clasificación Real vs Mocks** | Varias herramientas simulaban procesamiento con `setTimeout` y descargas de texto estático. | Eliminación de simulaciones; separación explícita de 24 herramientas activas con procesamiento real y 6 deshabilitadas con aviso "Próximamente". | Sí |
+| **Clasificación Real vs Mocks** | Varias herramientas simulaban procesamiento con `setTimeout` y descargas de texto estático. | Eliminación de simulaciones; separación explícita de 29 herramientas activas con procesamiento real y 1 deshabilitada con aviso "Próximamente". | Sí |
+| **FASE 3: Video to MP3** | Mostraba aviso de "Próximamente" con reproductor HTML5. | Implementada con motor FFmpeg.wasm monohilo (`@ffmpeg/core` v0.12.10 con `libmp3lame`); selector de bitrate (128, 192, 320 kbps), barra de progreso real, cancelación y descarga directa de MP3. | Sí |
+| **FASE 3: Audio Converter** | Mostraba aviso de "Próximamente" con reproductor HTML5. | Implementada con motor FFmpeg.wasm monohilo; soporta transcodificación cruzada entre MP3, WAV, FLAC, M4A y OGG con borrado de memoria virtual en FS tras la descarga. | Sí |
+| **FASE 3: Video Cutter** | Mostraba aviso de "Próximamente" con reproductor HTML5. | Implementada con motor FFmpeg.wasm monohilo; controles de inicio/fin manuales y captura directa desde el reproductor; modos rápido (`-c copy`) y preciso (recodificado) con barra de progreso. | Sí |
+| **FASE 3: MP4 to GIF** | Mostraba aviso de "Próximamente" con reproductor HTML5. | Implementada con motor FFmpeg.wasm monohilo; filtro de 2 fases con paleta optimizada (`palettegen`/`paletteuse`), límite de seguridad de 15 segundos y dimensiones configurables (320px a 640px). | Sí |
+| **FASE 3: Video Compressor** | Mostraba aviso de "Próximamente" con reproductor HTML5. | Implementada con motor FFmpeg.wasm monohilo; presets Ligero (CRF 23), Medio (CRF 28 720p) y WhatsApp (CRF 32 480p) con H.264 + AAC, validación de límite de 500 MB, comparador de tamaño antes/después y botón de cancelación (`terminate`). | Sí |
 | **FASE 2: Unlock PDF** | Deshabilitada con aviso "Próximamente". | Implementada con qpdf compilado a WebAssembly (`@jspawn/qpdf-wasm` Apache-2.0); remueve restricciones en PDFs sin contraseña de apertura y solicita clave legítima en documentos protegidos. Descifrado criptográfico local sin fuerza bruta y aviso de privacidad visible. | Sí |
 | **FASE 2: Doc to PDF / PDF to Doc** | Deshabilitada con aviso "Próximamente". | Implementada con dos modos locales: (a) DOCX a PDF mediante Mammoth.js + html2pdf.js con previsualización en vivo e impresión controlada; (b) PDF a DOCX mediante PDF.js + docx con extracción de texto y empaquetado de archivo Word nativo. Aviso claro de simplificación de maquetaciones complejas. | Sí |
 | **FASE 1: PDF to JPEG** | Deshabilitada con aviso "Próximamente". | Implementada con PDF.js (worker local) + JSZip; soporta escalas 1x/2x/3x, calidad JPEG, descarga individual o ZIP, detección de contraseñas y cancelación. | Sí |

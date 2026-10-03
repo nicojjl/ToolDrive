@@ -218,60 +218,55 @@ const TOOLS = [
     category: "media",
     categoryName: "Audio y Video",
     title: "Video to MP3 (Convertidor a audio)",
-    desc: "Extrae la pista de sonido de un archivo de video en calidad MP3 a 128, 192 o 320 kbps.",
+    desc: "Extrae el audio de videos en formato MP3 con calidad seleccionable (128, 192 o 320 kbps) 100% local.",
     reason: "Extracción de música, conferencias y podcasts",
     location: "Audio y Video",
-    formats: ".mp4 → .mp3",
-    iconType: "video",
-    disabled: true
+    formats: ".mp4, .mov, .webm → .mp3",
+    iconType: "video"
   },
   {
     id: "mp4-to-gif",
     category: "media",
     categoryName: "Audio y Video",
     title: "MP4 to GIF",
-    desc: "Convierte fragmentos de video en animaciones GIF livianas y en bucle para compartir en chats.",
+    desc: "Convierte fragmentos de video a GIF con paleta de color optimizada, control de FPS y resolución.",
     reason: "Creación de memes y clips animados",
     location: "Audio y Video",
-    formats: ".mp4 → .gif",
-    iconType: "video",
-    disabled: true
+    formats: ".mp4, .mov, .webm → .gif",
+    iconType: "video"
   },
   {
     id: "video-compress",
     category: "media",
     categoryName: "Audio y Video",
     title: "Video Compressor (Comprimir video)",
-    desc: "Reduce el peso de un archivo de video para que quepa en WhatsApp (límite 16MB/64MB) o correo.",
+    desc: "Comprime videos con presets (Ligero, Medio, WhatsApp) usando H.264 y AAC con límite de 500 MB.",
     reason: "Envío sin límites en mensajería móvil",
     location: "Audio y Video",
-    formats: ".mp4, .mov",
-    iconType: "video",
-    disabled: true
+    formats: ".mp4, .mov, .webm",
+    iconType: "video"
   },
   {
     id: "audio-converter",
     category: "media",
     categoryName: "Audio y Video",
     title: "Audio Converter (Convertidor de audio)",
-    desc: "Cambia formatos de sonido entre MP3, WAV, M4A, FLAC y OGG sin pérdida de frecuencias audibles.",
+    desc: "Convierte entre MP3, WAV, FLAC, M4A/AAC y OGG directamente en tu navegador sin servidores.",
     reason: "Transcodificación universal de audio",
     location: "Audio y Video",
-    formats: ".mp3, .wav, .flac...",
-    iconType: "audio",
-    disabled: true
+    formats: ".mp3, .wav, .flac, .m4a, .ogg",
+    iconType: "audio"
   },
   {
     id: "video-cutter",
     category: "media",
     categoryName: "Audio y Video",
     title: "Video Cutter (Recortar video)",
-    desc: "Corta el inicio o final de un video con vista previa y selección exacta de segundos.",
+    desc: "Recorta videos con vista previa interactiva, modo rápido (sin recodificar) o modo preciso al fotograma.",
     reason: "Edición rápida de clips sin instalar software",
     location: "Audio y Video",
     formats: ".mp4, .mov, .webm",
-    iconType: "video",
-    disabled: true
+    iconType: "video"
   },
 
   // --- Categoría 4: Texto y Productividad ---
@@ -502,6 +497,50 @@ async function ensureDocxReady() {
     await loadScriptAsync("libs/docx/docx.iife.js");
   }
 }
+
+let ffmpegInstance = null;
+let ffmpegLoadPromise = null;
+
+async function ensureFFmpegReady() {
+  if (ffmpegInstance && ffmpegInstance.loaded) {
+    return ffmpegInstance;
+  }
+  if (ffmpegLoadPromise) {
+    return await ffmpegLoadPromise;
+  }
+
+  ffmpegLoadPromise = (async () => {
+    if (typeof window.FFmpegWASM === "undefined") {
+      await loadScriptAsync("libs/ffmpeg/ffmpeg.js");
+    }
+    const { FFmpeg } = window.FFmpegWASM;
+    const ffmpeg = new FFmpeg();
+
+    const baseURL = new URL("libs/ffmpeg/", window.location.href).href;
+    await ffmpeg.load({
+      coreURL: new URL("ffmpeg-core.js", baseURL).href,
+      wasmURL: new URL("ffmpeg-core.wasm", baseURL).href
+    });
+
+    ffmpegInstance = ffmpeg;
+    return ffmpeg;
+  })();
+
+  try {
+    return await ffmpegLoadPromise;
+  } finally {
+    ffmpegLoadPromise = null;
+  }
+}
+
+window.cancelMediaProcess = function() {
+  if (ffmpegInstance) {
+    try {
+      ffmpegInstance.terminate();
+    } catch (e) {}
+    ffmpegInstance = null;
+  }
+};
 
 function parsePdfRanges(rangeStr, maxPages) {
   const set = new Set();
@@ -1349,6 +1388,7 @@ window.closeToolModal = function() {
   if (typeof window.cancelCompressPdf === "function") try { window.cancelCompressPdf(); } catch (e) {}
   if (typeof window.cancelUnlockPdf === "function") try { window.cancelUnlockPdf(); } catch (e) {}
   if (typeof window.cancelDocToPdf === "function") try { window.cancelDocToPdf(); } catch (e) {}
+  if (typeof window.cancelMediaProcess === "function") try { window.cancelMediaProcess(); } catch (e) {}
   // Clean any active object URLs created inside tool modals
   revokeAllModalObjectUrls();
 
@@ -5462,81 +5502,1215 @@ function buildToolWorkspace(tool, container, footer) {
       break;
     }
 
-    // ---------------- AUDIO & VIDEO TOOLS (PREVIEW + PROXIMAMENTE) ----------------
-    case "video-to-mp3":
-    case "mp4-to-gif":
-    case "video-compress":
-    case "audio-converter":
-    case "video-cutter": {
-      const isAudioConv = tool.id === "audio-converter";
-
+    // ---------------- AUDIO & VIDEO TOOLS (FFMPEG.WASM SINGLE-THREAD) ----------------
+    case "video-to-mp3": {
       container.innerHTML = `
-        <div class="ui-dropzone" id="mediaDropzone" onclick="document.getElementById('mediaFileInput').click()">
-          <input type="file" id="mediaFileInput" style="display: none;" accept="video/*,audio/*">
-          <div class="ui-dropzone-icon">${isAudioConv ? ICONS.audio : ICONS.video}</div>
-          <div class="ui-dropzone-title">Selecciona o arrastra tu archivo multimedia</div>
-          <div class="ui-dropzone-sub">Compatible con MP4, WebM, MOV, MP3, WAV, FLAC, M4A</div>
+        <div class="ui-dropzone" id="v2mp3Dropzone" onclick="document.getElementById('v2mp3Input').click()">
+          <input type="file" id="v2mp3Input" style="display: none;" accept="video/*,audio/*">
+          <div class="ui-dropzone-icon">${ICONS.video}</div>
+          <div class="ui-dropzone-title">Selecciona o arrastra tu archivo de video</div>
+          <div class="ui-dropzone-sub">Extrae la pista de sonido en MP3 (límite máx. 500 MB)</div>
         </div>
 
-        <div id="mediaWorkArea" style="display: none;">
-          <div style="background: #000; border-radius: 12px; overflow: hidden; margin-bottom: 16px; max-height: 220px; display: flex; align-items: center; justify-content: center;">
-            <video id="mediaPlayerPreview" controls style="max-width: 100%; max-height: 220px;"></video>
+        <div id="v2mp3WorkArea" style="display: none;">
+          <div style="background: #000; border-radius: 12px; overflow: hidden; margin-bottom: 14px; max-height: 220px; display: flex; align-items: center; justify-content: center;">
+            <video id="v2mp3Player" controls style="max-width: 100%; max-height: 220px;"></video>
           </div>
 
-          <div style="font-size: 12px; color: var(--md-sys-color-on-surface-variant); margin-bottom: 12px;">
-            Archivo cargado: <strong id="mediaLoadedName" style="color: var(--md-sys-color-on-surface);">-</strong>
+          <div style="background: var(--md-sys-color-surface-variant); border-radius: 12px; padding: 12px 16px; margin-bottom: 14px; border: 1px solid var(--md-sys-color-outline-variant); display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <strong id="v2mp3FileName" style="font-size: 13px; word-break: break-all;"></strong>
+              <div id="v2mp3FileInfo" style="font-size: 11px; color: var(--md-sys-color-on-surface-variant);"></div>
+            </div>
+            <button class="ui-btn ui-btn-outlined" style="padding: 4px 10px; font-size: 11px; height: auto;" onclick="resetV2mp3()">Cambiar archivo</button>
           </div>
 
-          <div style="background: var(--md-sys-color-surface-variant); border-radius: 12px; padding: 14px 16px; border: 1px solid var(--md-sys-color-outline-variant);">
-            <div style="display: flex; align-items: flex-start; gap: 10px;">
-              <span style="font-size: 20px; line-height: 1;">ℹ️</span>
-              <div>
-                <div style="font-size: 13px; font-weight: 600; margin-bottom: 2px;">Conversión multimedia local sin servidores</div>
-                <div style="font-size: 12px; color: var(--md-sys-color-on-surface-variant); line-height: 1.4;">
-                  Para transcodificar y exportar video o audio en el navegador de manera 100% privada se requiere el motor FFmpeg WebAssembly (~30 MB). Esta función estará activa en la próxima versión de ToolDrive para garantizar privacidad y óptimo rendimiento.
-                </div>
-              </div>
+          <div style="margin-bottom: 14px;">
+            <label style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 6px;">Calidad de audio MP3 (Bitrate):</label>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px;">
+              <label class="ui-radio-card" style="padding: 8px 10px; border-radius: 8px; border: 1px solid var(--md-sys-color-outline-variant); display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 12px;">
+                <input type="radio" name="v2mp3Bitrate" value="128"> 128 kbps (Voz/Liviano)
+              </label>
+              <label class="ui-radio-card" style="padding: 8px 10px; border-radius: 8px; border: 1px solid var(--md-sys-color-outline-variant); display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 12px;">
+                <input type="radio" name="v2mp3Bitrate" value="192" checked> 192 kbps (Estándar)
+              </label>
+              <label class="ui-radio-card" style="padding: 8px 10px; border-radius: 8px; border: 1px solid var(--md-sys-color-outline-variant); display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 12px;">
+                <input type="radio" name="v2mp3Bitrate" value="320"> 320 kbps (Alta fidelidad)
+              </label>
+            </div>
+          </div>
+
+          <div id="v2mp3ProgressWrap" style="display: none; margin-top: 14px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; margin-bottom: 6px;">
+              <span id="v2mp3StatusText">Iniciando extracción...</span>
+              <span id="v2mp3Percent" style="font-weight: 600;">0%</span>
+            </div>
+            <div style="background: var(--md-sys-color-surface-variant); border-radius: 8px; height: 8px; overflow: hidden;">
+              <div id="v2mp3BarFill" style="background: var(--md-sys-color-primary); height: 100%; width: 0%; transition: width 0.15s ease;"></div>
             </div>
           </div>
         </div>
       `;
 
       footer.innerHTML = `
-        <button class="ui-btn ui-btn-outlined" onclick="closeToolModal()">Cerrar</button>
-        <button class="ui-btn ui-btn-primary" disabled style="opacity: 0.65; cursor: not-allowed;" title="Motor FFmpeg.wasm en preparación">
-          Próximamente disponible
-        </button>
+        <button class="ui-btn ui-btn-outlined" id="btnCancelV2mp3" onclick="closeToolModal()">Cancelar</button>
+        <button class="ui-btn ui-btn-primary" id="btnExecV2mp3" disabled onclick="executeV2mp3()">Extraer Audio MP3</button>
       `;
 
-      const fileInput = document.getElementById("mediaFileInput");
-      const dropzone = document.getElementById("mediaDropzone");
-      const workArea = document.getElementById("mediaWorkArea");
-      const player = document.getElementById("mediaPlayerPreview");
+      const fileInput = document.getElementById("v2mp3Input");
+      const dropzone = document.getElementById("v2mp3Dropzone");
+      const workArea = document.getElementById("v2mp3WorkArea");
+      const player = document.getElementById("v2mp3Player");
+      const btnExec = document.getElementById("btnExecV2mp3");
 
-      let currentMediaObjectUrl = null;
-      function handleMediaFile(file) {
+      let loadedV2mp3File = null;
+      let v2mp3ObjectUrl = null;
+      let isV2mp3Cancelled = false;
+
+      window.resetV2mp3 = function() {
+        loadedV2mp3File = null;
+        if (v2mp3ObjectUrl) URL.revokeObjectURL(v2mp3ObjectUrl);
+        v2mp3ObjectUrl = null;
+        player.removeAttribute("src");
+        player.load();
+        fileInput.value = "";
+        workArea.style.display = "none";
+        dropzone.style.display = "block";
+        btnExec.setAttribute("disabled", "true");
+        document.getElementById("v2mp3ProgressWrap").style.display = "none";
+      };
+
+      function handleV2mp3File(file) {
         if (!file) return;
-        if (currentMediaObjectUrl) {
-          URL.revokeObjectURL(currentMediaObjectUrl);
+        if (file.size > 500 * 1024 * 1024) {
+          showToast("El archivo supera el límite de 500 MB para procesamiento en el navegador.");
+          return;
         }
-        currentMediaObjectUrl = URL.createObjectURL(file);
-        registerModalObjectUrl(currentMediaObjectUrl);
-        player.src = currentMediaObjectUrl;
-        document.getElementById("mediaLoadedName").textContent = `${file.name} (${(file.size / (1024 * 1024)).toFixed(2)} MB)`;
+        if (v2mp3ObjectUrl) URL.revokeObjectURL(v2mp3ObjectUrl);
+        v2mp3ObjectUrl = URL.createObjectURL(file);
+        registerModalObjectUrl(v2mp3ObjectUrl);
+        player.src = v2mp3ObjectUrl;
+        loadedV2mp3File = file;
+
+        document.getElementById("v2mp3FileName").textContent = file.name;
+        document.getElementById("v2mp3FileInfo").innerText = `${formatFileSize(file.size)}`;
         dropzone.style.display = "none";
         workArea.style.display = "block";
-        showToast("Archivo multimedia cargado en el reproductor");
+        btnExec.removeAttribute("disabled");
+        showToast("Video cargado en vista previa");
       }
 
-      fileInput.addEventListener("change", (e) => handleMediaFile(e.target.files[0]));
-
+      fileInput.addEventListener("change", (e) => handleV2mp3File(e.target.files[0]));
       dropzone.addEventListener("dragover", (e) => { e.preventDefault(); dropzone.classList.add("dragover"); });
       dropzone.addEventListener("dragleave", () => dropzone.classList.remove("dragover"));
       dropzone.addEventListener("drop", (e) => {
         e.preventDefault();
         dropzone.classList.remove("dragover");
-        if (e.dataTransfer.files.length) handleMediaFile(e.dataTransfer.files[0]);
+        if (e.dataTransfer.files.length) handleV2mp3File(e.dataTransfer.files[0]);
       });
+
+      window.executeV2mp3 = async function() {
+        if (!loadedV2mp3File) return;
+
+        const bitrateRadio = document.querySelector('input[name="v2mp3Bitrate"]:checked');
+        const bitrate = bitrateRadio ? bitrateRadio.value : "192";
+
+        const progressWrap = document.getElementById("v2mp3ProgressWrap");
+        const barFill = document.getElementById("v2mp3BarFill");
+        const percentText = document.getElementById("v2mp3Percent");
+        const statusText = document.getElementById("v2mp3StatusText");
+        const btnCancel = document.getElementById("btnCancelV2mp3");
+
+        isV2mp3Cancelled = false;
+        progressWrap.style.display = "block";
+        btnExec.setAttribute("disabled", "true");
+        btnCancel.innerText = "Detener";
+        btnCancel.onclick = () => {
+          isV2mp3Cancelled = true;
+          statusText.innerText = "Cancelando...";
+          if (window.cancelMediaProcess) window.cancelMediaProcess();
+        };
+
+        barFill.style.width = "10%";
+        percentText.innerText = "10%";
+        statusText.innerText = "Cargando motor multimedia FFmpeg WASM...";
+
+        let ffmpeg = null;
+        const inExt = (loadedV2mp3File.name.match(/\.[^/.]+$/) || [".mp4"])[0].toLowerCase();
+        const inName = "input_v2mp3" + inExt;
+        const outName = "output_v2mp3.mp3";
+
+        const progressHandler = ({ progress }) => {
+          if (progress > 0 && progress <= 1) {
+            const pct = Math.min(99, Math.round(progress * 100));
+            barFill.style.width = pct + "%";
+            percentText.innerText = pct + "%";
+          }
+        };
+
+        try {
+          ffmpeg = await ensureFFmpegReady();
+          if (isV2mp3Cancelled) throw new Error("CANCELLED");
+
+          ffmpeg.on("progress", progressHandler);
+
+          barFill.style.width = "30%";
+          percentText.innerText = "30%";
+          statusText.innerText = "Preparando archivo de video...";
+
+          const fileBytes = await loadedV2mp3File.arrayBuffer();
+          await ffmpeg.writeFile(inName, new Uint8Array(fileBytes));
+
+          if (isV2mp3Cancelled) throw new Error("CANCELLED");
+
+          barFill.style.width = "50%";
+          percentText.innerText = "50%";
+          statusText.innerText = `Codificando pista de audio a MP3 (${bitrate} kbps)...`;
+
+          const args = ["-i", inName, "-vn", "-c:a", "libmp3lame", "-b:a", bitrate + "k", outName];
+          await ffmpeg.exec(args);
+
+          if (isV2mp3Cancelled) throw new Error("CANCELLED");
+
+          barFill.style.width = "95%";
+          percentText.innerText = "95%";
+          statusText.innerText = "Descargando archivo MP3...";
+
+          const outData = await ffmpeg.readFile(outName);
+          const outBlob = new Blob([outData.buffer], { type: "audio/mp3" });
+
+          const baseName = loadedV2mp3File.name.replace(/\.[^/.]+$/, "");
+          const blobUrl = URL.createObjectURL(outBlob);
+          const a = document.createElement("a");
+          a.download = `${baseName}.mp3`;
+          a.href = blobUrl;
+          a.click();
+          setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+
+          barFill.style.width = "100%";
+          percentText.innerText = "100%";
+          statusText.innerText = "¡Audio extraído exitosamente!";
+          showToast("✓ ¡Pista MP3 extraída y descargada!");
+          setTimeout(() => closeToolModal(), 700);
+        } catch (err) {
+          if (isV2mp3Cancelled || (err && (err.message === "CANCELLED" || (err.message && err.message.includes("terminate"))))) {
+            showToast("Extracción cancelada");
+          } else {
+            console.error("Error en video-to-mp3:", err);
+            const msg = err && err.message ? err.message.toLowerCase() : "";
+            if (msg.includes("oom") || msg.includes("memory") || msg.includes("abort") || err instanceof RangeError) {
+              showToast("Memoria insuficiente del navegador para este archivo. Prueba con un archivo más ligero.");
+            } else {
+              showToast("Error al extraer el audio: " + (err.message || "error en FFmpeg"));
+            }
+          }
+        } finally {
+          if (ffmpeg && ffmpeg.loaded) {
+            try { ffmpeg.off("progress", progressHandler); } catch (e) {}
+            try { await ffmpeg.deleteFile(inName); } catch (e) {}
+            try { await ffmpeg.deleteFile(outName); } catch (e) {}
+          }
+          btnExec.removeAttribute("disabled");
+          btnCancel.innerText = "Cerrar";
+          btnCancel.onclick = () => closeToolModal();
+        }
+      };
+      break;
+    }
+
+    // ---------------- AUDIO CONVERTER ----------------
+    case "audio-converter": {
+      container.innerHTML = `
+        <div class="ui-dropzone" id="audioConvDropzone" onclick="document.getElementById('audioConvInput').click()">
+          <input type="file" id="audioConvInput" style="display: none;" accept="audio/*,video/*">
+          <div class="ui-dropzone-icon">${ICONS.audio}</div>
+          <div class="ui-dropzone-title">Selecciona o arrastra tu archivo de audio</div>
+          <div class="ui-dropzone-sub">Compatible con MP3, WAV, FLAC, M4A, AAC, OGG (límite máx. 500 MB)</div>
+        </div>
+
+        <div id="audioConvWorkArea" style="display: none;">
+          <div style="background: var(--md-sys-color-surface-variant); border-radius: 12px; padding: 14px 16px; margin-bottom: 14px; border: 1px solid var(--md-sys-color-outline-variant);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+              <div>
+                <strong id="audioConvFileName" style="font-size: 13px; word-break: break-all;"></strong>
+                <div id="audioConvFileInfo" style="font-size: 11px; color: var(--md-sys-color-on-surface-variant);"></div>
+              </div>
+              <button class="ui-btn ui-btn-outlined" style="padding: 4px 10px; font-size: 11px; height: auto;" onclick="resetAudioConv()">Cambiar archivo</button>
+            </div>
+            <audio id="audioConvPlayer" controls style="width: 100%;"></audio>
+          </div>
+
+          <div style="margin-bottom: 14px;">
+            <label style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 6px;">Formato de salida:</label>
+            <select id="audioConvFormat" class="ui-input" style="width: 100%; padding: 8px 12px; font-size: 13px;">
+              <option value="mp3" selected>MP3 (MPEG Layer 3 - 192 kbps)</option>
+              <option value="wav">WAV (PCM 16-bit sin compresión)</option>
+              <option value="flac">FLAC (Free Lossless Audio Codec)</option>
+              <option value="m4a">M4A / AAC (Audio de alta fidelidad - 192 kbps)</option>
+              <option value="ogg">OGG (Vorbis Audio Codec)</option>
+            </select>
+          </div>
+
+          <div id="audioConvProgressWrap" style="display: none; margin-top: 14px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; margin-bottom: 6px;">
+              <span id="audioConvStatusText">Iniciando conversión...</span>
+              <span id="audioConvPercent" style="font-weight: 600;">0%</span>
+            </div>
+            <div style="background: var(--md-sys-color-surface-variant); border-radius: 8px; height: 8px; overflow: hidden;">
+              <div id="audioConvBarFill" style="background: var(--md-sys-color-primary); height: 100%; width: 0%; transition: width 0.15s ease;"></div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      footer.innerHTML = `
+        <button class="ui-btn ui-btn-outlined" id="btnCancelAudioConv" onclick="closeToolModal()">Cancelar</button>
+        <button class="ui-btn ui-btn-primary" id="btnExecAudioConv" disabled onclick="executeAudioConv()">Convertir Audio</button>
+      `;
+
+      const fileInput = document.getElementById("audioConvInput");
+      const dropzone = document.getElementById("audioConvDropzone");
+      const workArea = document.getElementById("audioConvWorkArea");
+      const player = document.getElementById("audioConvPlayer");
+      const btnExec = document.getElementById("btnExecAudioConv");
+
+      let loadedAudioConvFile = null;
+      let audioConvObjectUrl = null;
+      let isAudioConvCancelled = false;
+
+      window.resetAudioConv = function() {
+        loadedAudioConvFile = null;
+        if (audioConvObjectUrl) URL.revokeObjectURL(audioConvObjectUrl);
+        audioConvObjectUrl = null;
+        player.removeAttribute("src");
+        player.load();
+        fileInput.value = "";
+        workArea.style.display = "none";
+        dropzone.style.display = "block";
+        btnExec.setAttribute("disabled", "true");
+        document.getElementById("audioConvProgressWrap").style.display = "none";
+      };
+
+      function handleAudioConvFile(file) {
+        if (!file) return;
+        if (file.size > 500 * 1024 * 1024) {
+          showToast("El archivo supera el límite de 500 MB para procesamiento en el navegador.");
+          return;
+        }
+        if (audioConvObjectUrl) URL.revokeObjectURL(audioConvObjectUrl);
+        audioConvObjectUrl = URL.createObjectURL(file);
+        registerModalObjectUrl(audioConvObjectUrl);
+        player.src = audioConvObjectUrl;
+        loadedAudioConvFile = file;
+
+        document.getElementById("audioConvFileName").textContent = file.name;
+        document.getElementById("audioConvFileInfo").innerText = `${formatFileSize(file.size)}`;
+        dropzone.style.display = "none";
+        workArea.style.display = "block";
+        btnExec.removeAttribute("disabled");
+        showToast("Audio cargado en vista previa");
+      }
+
+      fileInput.addEventListener("change", (e) => handleAudioConvFile(e.target.files[0]));
+      dropzone.addEventListener("dragover", (e) => { e.preventDefault(); dropzone.classList.add("dragover"); });
+      dropzone.addEventListener("dragleave", () => dropzone.classList.remove("dragover"));
+      dropzone.addEventListener("drop", (e) => {
+        e.preventDefault();
+        dropzone.classList.remove("dragover");
+        if (e.dataTransfer.files.length) handleAudioConvFile(e.dataTransfer.files[0]);
+      });
+
+      window.executeAudioConv = async function() {
+        if (!loadedAudioConvFile) return;
+
+        const targetFormat = document.getElementById("audioConvFormat").value || "mp3";
+        const progressWrap = document.getElementById("audioConvProgressWrap");
+        const barFill = document.getElementById("audioConvBarFill");
+        const percentText = document.getElementById("audioConvPercent");
+        const statusText = document.getElementById("audioConvStatusText");
+        const btnCancel = document.getElementById("btnCancelAudioConv");
+
+        isAudioConvCancelled = false;
+        progressWrap.style.display = "block";
+        btnExec.setAttribute("disabled", "true");
+        btnCancel.innerText = "Detener";
+        btnCancel.onclick = () => {
+          isAudioConvCancelled = true;
+          statusText.innerText = "Cancelando...";
+          if (window.cancelMediaProcess) window.cancelMediaProcess();
+        };
+
+        barFill.style.width = "10%";
+        percentText.innerText = "10%";
+        statusText.innerText = "Cargando motor multimedia FFmpeg WASM...";
+
+        let ffmpeg = null;
+        const inExt = (loadedAudioConvFile.name.match(/\.[^/.]+$/) || [".mp3"])[0].toLowerCase();
+        const inName = "input_audioconv" + inExt;
+        const outName = "output_audioconv." + targetFormat;
+
+        const progressHandler = ({ progress }) => {
+          if (progress > 0 && progress <= 1) {
+            const pct = Math.min(99, Math.round(progress * 100));
+            barFill.style.width = pct + "%";
+            percentText.innerText = pct + "%";
+          }
+        };
+
+        try {
+          ffmpeg = await ensureFFmpegReady();
+          if (isAudioConvCancelled) throw new Error("CANCELLED");
+
+          ffmpeg.on("progress", progressHandler);
+
+          barFill.style.width = "30%";
+          percentText.innerText = "30%";
+          statusText.innerText = "Preparando archivo de audio...";
+
+          const fileBytes = await loadedAudioConvFile.arrayBuffer();
+          await ffmpeg.writeFile(inName, new Uint8Array(fileBytes));
+
+          if (isAudioConvCancelled) throw new Error("CANCELLED");
+
+          barFill.style.width = "50%";
+          percentText.innerText = "50%";
+          statusText.innerText = `Convirtiendo pista a formato ${targetFormat.toUpperCase()}...`;
+
+          let args = ["-i", inName];
+          if (targetFormat === "mp3") {
+            args.push("-c:a", "libmp3lame", "-b:a", "192k");
+          } else if (targetFormat === "wav") {
+            args.push("-c:a", "pcm_s16le");
+          } else if (targetFormat === "flac") {
+            args.push("-c:a", "flac");
+          } else if (targetFormat === "m4a") {
+            args.push("-c:a", "aac", "-b:a", "192k");
+          } else if (targetFormat === "ogg") {
+            args.push("-c:a", "libvorbis", "-q:a", "4");
+          }
+          args.push(outName);
+
+          await ffmpeg.exec(args);
+
+          if (isAudioConvCancelled) throw new Error("CANCELLED");
+
+          barFill.style.width = "95%";
+          percentText.innerText = "95%";
+          statusText.innerText = "Descargando archivo convertido...";
+
+          const outData = await ffmpeg.readFile(outName);
+          const mimeTypes = {
+            mp3: "audio/mp3",
+            wav: "audio/wav",
+            flac: "audio/flac",
+            m4a: "audio/mp4",
+            ogg: "audio/ogg"
+          };
+          const outBlob = new Blob([outData.buffer], { type: mimeTypes[targetFormat] || "application/octet-stream" });
+
+          const baseName = loadedAudioConvFile.name.replace(/\.[^/.]+$/, "");
+          const blobUrl = URL.createObjectURL(outBlob);
+          const a = document.createElement("a");
+          a.download = `${baseName}.${targetFormat}`;
+          a.href = blobUrl;
+          a.click();
+          setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+
+          barFill.style.width = "100%";
+          percentText.innerText = "100%";
+          statusText.innerText = "¡Audio convertido exitosamente!";
+          showToast(`✓ ¡Archivo ${targetFormat.toUpperCase()} descargado!`);
+          setTimeout(() => closeToolModal(), 700);
+        } catch (err) {
+          if (isAudioConvCancelled || (err && (err.message === "CANCELLED" || (err.message && err.message.includes("terminate"))))) {
+            showToast("Conversión cancelada");
+          } else {
+            console.error("Error en audio-converter:", err);
+            const msg = err && err.message ? err.message.toLowerCase() : "";
+            if (msg.includes("oom") || msg.includes("memory") || msg.includes("abort") || err instanceof RangeError) {
+              showToast("Memoria insuficiente del navegador para este archivo. Prueba con un archivo más ligero.");
+            } else {
+              showToast("Error al convertir audio: " + (err.message || "error en FFmpeg"));
+            }
+          }
+        } finally {
+          if (ffmpeg && ffmpeg.loaded) {
+            try { ffmpeg.off("progress", progressHandler); } catch (e) {}
+            try { await ffmpeg.deleteFile(inName); } catch (e) {}
+            try { await ffmpeg.deleteFile(outName); } catch (e) {}
+          }
+          btnExec.removeAttribute("disabled");
+          btnCancel.innerText = "Cerrar";
+          btnCancel.onclick = () => closeToolModal();
+        }
+      };
+      break;
+    }
+
+    // ---------------- VIDEO CUTTER ----------------
+    case "video-cutter": {
+      container.innerHTML = `
+        <div class="ui-dropzone" id="vCutterDropzone" onclick="document.getElementById('vCutterInput').click()">
+          <input type="file" id="vCutterInput" style="display: none;" accept="video/*">
+          <div class="ui-dropzone-icon">${ICONS.video}</div>
+          <div class="ui-dropzone-title">Selecciona o arrastra el video para recortar</div>
+          <div class="ui-dropzone-sub">Compatible con MP4, MOV, WebM, MKV (límite máx. 500 MB)</div>
+        </div>
+
+        <div id="vCutterWorkArea" style="display: none;">
+          <div style="background: #000; border-radius: 12px; overflow: hidden; margin-bottom: 14px; max-height: 220px; display: flex; align-items: center; justify-content: center;">
+            <video id="vCutterPlayer" controls style="max-width: 100%; max-height: 220px;"></video>
+          </div>
+
+          <div style="background: var(--md-sys-color-surface-variant); border-radius: 12px; padding: 12px 16px; margin-bottom: 14px; border: 1px solid var(--md-sys-color-outline-variant); display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <strong id="vCutterFileName" style="font-size: 13px; word-break: break-all;"></strong>
+              <div id="vCutterFileInfo" style="font-size: 11px; color: var(--md-sys-color-on-surface-variant);"></div>
+            </div>
+            <button class="ui-btn ui-btn-outlined" style="padding: 4px 10px; font-size: 11px; height: auto;" onclick="resetVCutter()">Cambiar video</button>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px;">
+            <div>
+              <label style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 4px;">Punto de Inicio (segundos):</label>
+              <div style="display: flex; gap: 6px;">
+                <input type="number" id="vCutterStart" class="ui-input" min="0" step="0.1" value="0" style="flex: 1; padding: 6px 10px;">
+                <button type="button" class="ui-btn ui-btn-outlined" style="font-size: 11px; padding: 4px 8px; height: 36px;" onclick="setCutterCurrentTime('start')">Usar actual</button>
+              </div>
+            </div>
+            <div>
+              <label style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 4px;">Punto Final (segundos):</label>
+              <div style="display: flex; gap: 6px;">
+                <input type="number" id="vCutterEnd" class="ui-input" min="0" step="0.1" value="0" style="flex: 1; padding: 6px 10px;">
+                <button type="button" class="ui-btn ui-btn-outlined" style="font-size: 11px; padding: 4px 8px; height: 36px;" onclick="setCutterCurrentTime('end')">Usar actual</button>
+              </div>
+            </div>
+          </div>
+
+          <div style="margin-bottom: 14px;">
+            <label style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 6px;">Modo de corte:</label>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+              <label class="ui-radio-card" style="padding: 10px 12px; border-radius: 8px; border: 1px solid var(--md-sys-color-outline-variant); display: flex; flex-direction: column; gap: 4px; cursor: pointer; font-size: 12px;">
+                <div style="display: flex; align-items: center; gap: 6px; font-weight: 600;">
+                  <input type="radio" name="vCutterMode" value="fast" checked> ⚡ Modo Rápido (-c copy)
+                </div>
+                <span style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); line-height: 1.3;">
+                  Corta instantáneamente en el fotograma clave más cercano sin recodificar.
+                </span>
+              </label>
+              <label class="ui-radio-card" style="padding: 10px 12px; border-radius: 8px; border: 1px solid var(--md-sys-color-outline-variant); display: flex; flex-direction: column; gap: 4px; cursor: pointer; font-size: 12px;">
+                <div style="display: flex; align-items: center; gap: 6px; font-weight: 600;">
+                  <input type="radio" name="vCutterMode" value="precise"> 🎯 Modo Preciso (H.264)
+                </div>
+                <span style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); line-height: 1.3;">
+                  Recodifica video y audio para un corte exacto al milisegundo en el fotograma exacto.
+                </span>
+              </label>
+            </div>
+          </div>
+
+          <div id="vCutterProgressWrap" style="display: none; margin-top: 14px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; margin-bottom: 6px;">
+              <span id="vCutterStatusText">Procesando corte de video...</span>
+              <span id="vCutterPercent" style="font-weight: 600;">0%</span>
+            </div>
+            <div style="background: var(--md-sys-color-surface-variant); border-radius: 8px; height: 8px; overflow: hidden;">
+              <div id="vCutterBarFill" style="background: var(--md-sys-color-primary); height: 100%; width: 0%; transition: width 0.15s ease;"></div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      footer.innerHTML = `
+        <button class="ui-btn ui-btn-outlined" id="btnCancelVCutter" onclick="closeToolModal()">Cancelar</button>
+        <button class="ui-btn ui-btn-primary" id="btnExecVCutter" disabled onclick="executeVCutter()">Cortar Video</button>
+      `;
+
+      const fileInput = document.getElementById("vCutterInput");
+      const dropzone = document.getElementById("vCutterDropzone");
+      const workArea = document.getElementById("vCutterWorkArea");
+      const player = document.getElementById("vCutterPlayer");
+      const btnExec = document.getElementById("btnExecVCutter");
+      const startInput = document.getElementById("vCutterStart");
+      const endInput = document.getElementById("vCutterEnd");
+
+      let loadedVCutterFile = null;
+      let vCutterObjectUrl = null;
+      let isVCutterCancelled = false;
+
+      window.setCutterCurrentTime = function(type) {
+        if (!player) return;
+        const cur = player.currentTime || 0;
+        if (type === "start") {
+          startInput.value = cur.toFixed(1);
+        } else {
+          endInput.value = cur.toFixed(1);
+        }
+      };
+
+      window.resetVCutter = function() {
+        loadedVCutterFile = null;
+        if (vCutterObjectUrl) URL.revokeObjectURL(vCutterObjectUrl);
+        vCutterObjectUrl = null;
+        player.removeAttribute("src");
+        player.load();
+        fileInput.value = "";
+        workArea.style.display = "none";
+        dropzone.style.display = "block";
+        btnExec.setAttribute("disabled", "true");
+        document.getElementById("vCutterProgressWrap").style.display = "none";
+      };
+
+      function handleVCutterFile(file) {
+        if (!file) return;
+        if (file.size > 500 * 1024 * 1024) {
+          showToast("El archivo supera el límite de 500 MB para procesamiento en el navegador.");
+          return;
+        }
+        if (vCutterObjectUrl) URL.revokeObjectURL(vCutterObjectUrl);
+        vCutterObjectUrl = URL.createObjectURL(file);
+        registerModalObjectUrl(vCutterObjectUrl);
+        player.src = vCutterObjectUrl;
+        loadedVCutterFile = file;
+
+        player.onloadedmetadata = () => {
+          const dur = player.duration || 0;
+          startInput.value = "0";
+          endInput.value = dur.toFixed(1);
+          document.getElementById("vCutterFileInfo").innerText = `Duración: ${dur.toFixed(1)}s • ${formatFileSize(file.size)}`;
+        };
+
+        document.getElementById("vCutterFileName").textContent = file.name;
+        dropzone.style.display = "none";
+        workArea.style.display = "block";
+        btnExec.removeAttribute("disabled");
+        showToast("Video cargado en vista previa");
+      }
+
+      fileInput.addEventListener("change", (e) => handleVCutterFile(e.target.files[0]));
+      dropzone.addEventListener("dragover", (e) => { e.preventDefault(); dropzone.classList.add("dragover"); });
+      dropzone.addEventListener("dragleave", () => dropzone.classList.remove("dragover"));
+      dropzone.addEventListener("drop", (e) => {
+        e.preventDefault();
+        dropzone.classList.remove("dragover");
+        if (e.dataTransfer.files.length) handleVCutterFile(e.dataTransfer.files[0]);
+      });
+
+      window.executeVCutter = async function() {
+        if (!loadedVCutterFile) return;
+
+        const startSec = Math.max(0, parseFloat(startInput.value) || 0);
+        const endSec = parseFloat(endInput.value) || 0;
+
+        if (endSec <= startSec) {
+          showToast("El punto final debe ser mayor que el punto de inicio");
+          return;
+        }
+
+        const modeRadio = document.querySelector('input[name="vCutterMode"]:checked');
+        const isFast = modeRadio && modeRadio.value === "fast";
+
+        const progressWrap = document.getElementById("vCutterProgressWrap");
+        const barFill = document.getElementById("vCutterBarFill");
+        const percentText = document.getElementById("vCutterPercent");
+        const statusText = document.getElementById("vCutterStatusText");
+        const btnCancel = document.getElementById("btnCancelVCutter");
+
+        isVCutterCancelled = false;
+        progressWrap.style.display = "block";
+        btnExec.setAttribute("disabled", "true");
+        btnCancel.innerText = "Detener";
+        btnCancel.onclick = () => {
+          isVCutterCancelled = true;
+          statusText.innerText = "Cancelando...";
+          if (window.cancelMediaProcess) window.cancelMediaProcess();
+        };
+
+        barFill.style.width = "10%";
+        percentText.innerText = "10%";
+        statusText.innerText = "Cargando motor multimedia FFmpeg WASM...";
+
+        let ffmpeg = null;
+        const inExt = (loadedVCutterFile.name.match(/\.[^/.]+$/) || [".mp4"])[0].toLowerCase();
+        const inName = "input_cutter" + inExt;
+        const outName = "output_cutter.mp4";
+
+        const progressHandler = ({ progress }) => {
+          if (progress > 0 && progress <= 1) {
+            const pct = Math.min(99, Math.round(progress * 100));
+            barFill.style.width = pct + "%";
+            percentText.innerText = pct + "%";
+          }
+        };
+
+        try {
+          ffmpeg = await ensureFFmpegReady();
+          if (isVCutterCancelled) throw new Error("CANCELLED");
+
+          ffmpeg.on("progress", progressHandler);
+
+          barFill.style.width = "30%";
+          percentText.innerText = "30%";
+          statusText.innerText = "Cargando video en memoria...";
+
+          const fileBytes = await loadedVCutterFile.arrayBuffer();
+          await ffmpeg.writeFile(inName, new Uint8Array(fileBytes));
+
+          if (isVCutterCancelled) throw new Error("CANCELLED");
+
+          barFill.style.width = "50%";
+          percentText.innerText = "50%";
+          statusText.innerText = isFast ? "Recortando video con modo rápido (-c copy)..." : "Recodificando video al milisegundo...";
+
+          let args = ["-ss", startSec.toString(), "-to", endSec.toString(), "-i", inName];
+          if (isFast) {
+            args.push("-c", "copy");
+          } else {
+            args.push("-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac");
+          }
+          args.push(outName);
+
+          await ffmpeg.exec(args);
+
+          if (isVCutterCancelled) throw new Error("CANCELLED");
+
+          barFill.style.width = "95%";
+          percentText.innerText = "95%";
+          statusText.innerText = "Descargando video recortado...";
+
+          const outData = await ffmpeg.readFile(outName);
+          const outBlob = new Blob([outData.buffer], { type: "video/mp4" });
+
+          const baseName = loadedVCutterFile.name.replace(/\.[^/.]+$/, "");
+          const blobUrl = URL.createObjectURL(outBlob);
+          const a = document.createElement("a");
+          a.download = `${baseName}-recortado.mp4`;
+          a.href = blobUrl;
+          a.click();
+          setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+
+          barFill.style.width = "100%";
+          percentText.innerText = "100%";
+          statusText.innerText = "¡Video recortado exitosamente!";
+          showToast("✓ ¡Video recortado descargado!");
+          setTimeout(() => closeToolModal(), 700);
+        } catch (err) {
+          if (isVCutterCancelled || (err && (err.message === "CANCELLED" || (err.message && err.message.includes("terminate"))))) {
+            showToast("Recorte cancelado");
+          } else {
+            console.error("Error en video-cutter:", err);
+            const msg = err && err.message ? err.message.toLowerCase() : "";
+            if (msg.includes("oom") || msg.includes("memory") || msg.includes("abort") || err instanceof RangeError) {
+              showToast("Memoria insuficiente del navegador para este archivo. Prueba con un fragmento más corto.");
+            } else {
+              showToast("Error al recortar video: " + (err.message || "error en FFmpeg"));
+            }
+          }
+        } finally {
+          if (ffmpeg && ffmpeg.loaded) {
+            try { ffmpeg.off("progress", progressHandler); } catch (e) {}
+            try { await ffmpeg.deleteFile(inName); } catch (e) {}
+            try { await ffmpeg.deleteFile(outName); } catch (e) {}
+          }
+          btnExec.removeAttribute("disabled");
+          btnCancel.innerText = "Cerrar";
+          btnCancel.onclick = () => closeToolModal();
+        }
+      };
+      break;
+    }
+
+    // ---------------- MP4 TO GIF ----------------
+    case "mp4-to-gif": {
+      container.innerHTML = `
+        <div class="ui-dropzone" id="mp4GifDropzone" onclick="document.getElementById('mp4GifInput').click()">
+          <input type="file" id="mp4GifInput" style="display: none;" accept="video/*">
+          <div class="ui-dropzone-icon">${ICONS.video}</div>
+          <div class="ui-dropzone-title">Selecciona o arrastra el video para convertir a GIF</div>
+          <div class="ui-dropzone-sub">Compatible con MP4, MOV, WebM (límite máx. 500 MB)</div>
+        </div>
+
+        <div id="mp4GifWorkArea" style="display: none;">
+          <div style="background: #000; border-radius: 12px; overflow: hidden; margin-bottom: 14px; max-height: 220px; display: flex; align-items: center; justify-content: center;">
+            <video id="mp4GifPlayer" controls style="max-width: 100%; max-height: 220px;"></video>
+          </div>
+
+          <div style="background: var(--md-sys-color-surface-variant); border-radius: 12px; padding: 12px 16px; margin-bottom: 14px; border: 1px solid var(--md-sys-color-outline-variant); display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <strong id="mp4GifFileName" style="font-size: 13px; word-break: break-all;"></strong>
+              <div id="mp4GifFileInfo" style="font-size: 11px; color: var(--md-sys-color-on-surface-variant);"></div>
+            </div>
+            <button class="ui-btn ui-btn-outlined" style="padding: 4px 10px; font-size: 11px; height: auto;" onclick="resetMp4Gif()">Cambiar video</button>
+          </div>
+
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 12px;">
+            <div>
+              <label style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 4px;">Segundo inicial:</label>
+              <input type="number" id="mp4GifStart" class="ui-input" min="0" step="0.5" value="0" style="width: 100%; padding: 6px 10px;">
+            </div>
+            <div>
+              <label style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 4px;">Duración (máx. 15 s):</label>
+              <input type="number" id="mp4GifDuration" class="ui-input" min="1" max="15" step="1" value="5" style="width: 100%; padding: 6px 10px;">
+            </div>
+            <div>
+              <label style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 4px;">Ancho del GIF:</label>
+              <select id="mp4GifWidth" class="ui-input" style="width: 100%; padding: 6px 10px;">
+                <option value="320">320 px (Liviano)</option>
+                <option value="480" selected>480 px (Estándar)</option>
+                <option value="640">640 px (Alta resolución)</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 4px;">Fluidez (FPS):</label>
+              <select id="mp4GifFps" class="ui-input" style="width: 100%; padding: 6px 10px;">
+                <option value="10">10 fps (Ligero)</option>
+                <option value="15" selected>15 fps (Recomendado)</option>
+                <option value="20">20 fps (Muy fluido)</option>
+              </select>
+            </div>
+          </div>
+
+          <div style="background: #fef7e0; color: #7c4a00; border: 1px solid #fce8b2; border-radius: 10px; padding: 10px 12px; font-size: 11px; line-height: 1.4; margin-bottom: 14px;">
+            ⚠️ <strong>Aviso de peso de GIF:</strong> Las animaciones GIF no tienen compresión temporal entre cuadros. Un clip de 5 s a 480 px suele pesar entre 2 y 6 MB. Mantén la duración corta para resultados ligeros.
+          </div>
+
+          <div id="mp4GifProgressWrap" style="display: none; margin-top: 14px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; margin-bottom: 6px;">
+              <span id="mp4GifStatusText">Generando animación GIF...</span>
+              <span id="mp4GifPercent" style="font-weight: 600;">0%</span>
+            </div>
+            <div style="background: var(--md-sys-color-surface-variant); border-radius: 8px; height: 8px; overflow: hidden;">
+              <div id="mp4GifBarFill" style="background: var(--md-sys-color-primary); height: 100%; width: 0%; transition: width 0.15s ease;"></div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      footer.innerHTML = `
+        <button class="ui-btn ui-btn-outlined" id="btnCancelMp4Gif" onclick="closeToolModal()">Cancelar</button>
+        <button class="ui-btn ui-btn-primary" id="btnExecMp4Gif" disabled onclick="executeMp4Gif()">Generar GIF</button>
+      `;
+
+      const fileInput = document.getElementById("mp4GifInput");
+      const dropzone = document.getElementById("mp4GifDropzone");
+      const workArea = document.getElementById("mp4GifWorkArea");
+      const player = document.getElementById("mp4GifPlayer");
+      const btnExec = document.getElementById("btnExecMp4Gif");
+
+      let loadedMp4GifFile = null;
+      let mp4GifObjectUrl = null;
+      let isMp4GifCancelled = false;
+
+      window.resetMp4Gif = function() {
+        loadedMp4GifFile = null;
+        if (mp4GifObjectUrl) URL.revokeObjectURL(mp4GifObjectUrl);
+        mp4GifObjectUrl = null;
+        player.removeAttribute("src");
+        player.load();
+        fileInput.value = "";
+        workArea.style.display = "none";
+        dropzone.style.display = "block";
+        btnExec.setAttribute("disabled", "true");
+        document.getElementById("mp4GifProgressWrap").style.display = "none";
+      };
+
+      function handleMp4GifFile(file) {
+        if (!file) return;
+        if (file.size > 500 * 1024 * 1024) {
+          showToast("El archivo supera el límite de 500 MB para procesamiento en el navegador.");
+          return;
+        }
+        if (mp4GifObjectUrl) URL.revokeObjectURL(mp4GifObjectUrl);
+        mp4GifObjectUrl = URL.createObjectURL(file);
+        registerModalObjectUrl(mp4GifObjectUrl);
+        player.src = mp4GifObjectUrl;
+        loadedMp4GifFile = file;
+
+        document.getElementById("mp4GifFileName").textContent = file.name;
+        document.getElementById("mp4GifFileInfo").innerText = `${formatFileSize(file.size)}`;
+        dropzone.style.display = "none";
+        workArea.style.display = "block";
+        btnExec.removeAttribute("disabled");
+        showToast("Video cargado en vista previa");
+      }
+
+      fileInput.addEventListener("change", (e) => handleMp4GifFile(e.target.files[0]));
+      dropzone.addEventListener("dragover", (e) => { e.preventDefault(); dropzone.classList.add("dragover"); });
+      dropzone.addEventListener("dragleave", () => dropzone.classList.remove("dragover"));
+      dropzone.addEventListener("drop", (e) => {
+        e.preventDefault();
+        dropzone.classList.remove("dragover");
+        if (e.dataTransfer.files.length) handleMp4GifFile(e.dataTransfer.files[0]);
+      });
+
+      window.executeMp4Gif = async function() {
+        if (!loadedMp4GifFile) return;
+
+        const startSec = Math.max(0, parseFloat(document.getElementById("mp4GifStart").value) || 0);
+        const durationSec = Math.min(15, Math.max(1, parseFloat(document.getElementById("mp4GifDuration").value) || 5));
+        const width = document.getElementById("mp4GifWidth").value || "480";
+        const fps = document.getElementById("mp4GifFps").value || "15";
+
+        const progressWrap = document.getElementById("mp4GifProgressWrap");
+        const barFill = document.getElementById("mp4GifBarFill");
+        const percentText = document.getElementById("mp4GifPercent");
+        const statusText = document.getElementById("mp4GifStatusText");
+        const btnCancel = document.getElementById("btnCancelMp4Gif");
+
+        isMp4GifCancelled = false;
+        progressWrap.style.display = "block";
+        btnExec.setAttribute("disabled", "true");
+        btnCancel.innerText = "Detener";
+        btnCancel.onclick = () => {
+          isMp4GifCancelled = true;
+          statusText.innerText = "Cancelando...";
+          if (window.cancelMediaProcess) window.cancelMediaProcess();
+        };
+
+        barFill.style.width = "10%";
+        percentText.innerText = "10%";
+        statusText.innerText = "Cargando motor multimedia FFmpeg WASM...";
+
+        let ffmpeg = null;
+        const inExt = (loadedMp4GifFile.name.match(/\.[^/.]+$/) || [".mp4"])[0].toLowerCase();
+        const inName = "input_mp4gif" + inExt;
+        const outName = "output_mp4gif.gif";
+
+        const progressHandler = ({ progress }) => {
+          if (progress > 0 && progress <= 1) {
+            const pct = Math.min(99, Math.round(progress * 100));
+            barFill.style.width = pct + "%";
+            percentText.innerText = pct + "%";
+          }
+        };
+
+        try {
+          ffmpeg = await ensureFFmpegReady();
+          if (isMp4GifCancelled) throw new Error("CANCELLED");
+
+          ffmpeg.on("progress", progressHandler);
+
+          barFill.style.width = "25%";
+          percentText.innerText = "25%";
+          statusText.innerText = "Cargando video en memoria...";
+
+          const fileBytes = await loadedMp4GifFile.arrayBuffer();
+          await ffmpeg.writeFile(inName, new Uint8Array(fileBytes));
+
+          if (isMp4GifCancelled) throw new Error("CANCELLED");
+
+          barFill.style.width = "45%";
+          percentText.innerText = "45%";
+          statusText.innerText = "Generando paleta de color y optimizando cuadros...";
+
+          const filterStr = `fps=${fps},scale=${width}:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse`;
+          const args = ["-ss", startSec.toString(), "-t", durationSec.toString(), "-i", inName, "-vf", filterStr, outName];
+
+          await ffmpeg.exec(args);
+
+          if (isMp4GifCancelled) throw new Error("CANCELLED");
+
+          barFill.style.width = "95%";
+          percentText.innerText = "95%";
+          statusText.innerText = "Descargando animación GIF...";
+
+          const outData = await ffmpeg.readFile(outName);
+          const outBlob = new Blob([outData.buffer], { type: "image/gif" });
+
+          const baseName = loadedMp4GifFile.name.replace(/\.[^/.]+$/, "");
+          const blobUrl = URL.createObjectURL(outBlob);
+          const a = document.createElement("a");
+          a.download = `${baseName}.gif`;
+          a.href = blobUrl;
+          a.click();
+          setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+
+          barFill.style.width = "100%";
+          percentText.innerText = "100%";
+          statusText.innerText = `¡GIF generado exitosamente! (${formatFileSize(outBlob.size)})`;
+          showToast(`✓ ¡GIF generado (${formatFileSize(outBlob.size)}) y descargado!`);
+          setTimeout(() => closeToolModal(), 700);
+        } catch (err) {
+          if (isMp4GifCancelled || (err && (err.message === "CANCELLED" || (err.message && err.message.includes("terminate"))))) {
+            showToast("Generación de GIF cancelada");
+          } else {
+            console.error("Error en mp4-to-gif:", err);
+            const msg = err && err.message ? err.message.toLowerCase() : "";
+            if (msg.includes("oom") || msg.includes("memory") || msg.includes("abort") || err instanceof RangeError) {
+              showToast("Memoria insuficiente del navegador para este GIF. Reduce la duración o el ancho.");
+            } else {
+              showToast("Error al generar GIF: " + (err.message || "error en FFmpeg"));
+            }
+          }
+        } finally {
+          if (ffmpeg && ffmpeg.loaded) {
+            try { ffmpeg.off("progress", progressHandler); } catch (e) {}
+            try { await ffmpeg.deleteFile(inName); } catch (e) {}
+            try { await ffmpeg.deleteFile(outName); } catch (e) {}
+          }
+          btnExec.removeAttribute("disabled");
+          btnCancel.innerText = "Cerrar";
+          btnCancel.onclick = () => closeToolModal();
+        }
+      };
+      break;
+    }
+
+    // ---------------- VIDEO COMPRESS ----------------
+    case "video-compress": {
+      container.innerHTML = `
+        <div class="ui-dropzone" id="vCompDropzone" onclick="document.getElementById('vCompInput').click()">
+          <input type="file" id="vCompInput" style="display: none;" accept="video/*">
+          <div class="ui-dropzone-icon">${ICONS.video}</div>
+          <div class="ui-dropzone-title">Selecciona o arrastra el video para comprimir</div>
+          <div class="ui-dropzone-sub">Reduce el peso con H.264 + AAC (límite máx. 500 MB)</div>
+        </div>
+
+        <div id="vCompWorkArea" style="display: none;">
+          <div style="background: #000; border-radius: 12px; overflow: hidden; margin-bottom: 14px; max-height: 220px; display: flex; align-items: center; justify-content: center;">
+            <video id="vCompPlayer" controls style="max-width: 100%; max-height: 220px;"></video>
+          </div>
+
+          <div style="background: var(--md-sys-color-surface-variant); border-radius: 12px; padding: 12px 16px; margin-bottom: 14px; border: 1px solid var(--md-sys-color-outline-variant); display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <strong id="vCompFileName" style="font-size: 13px; word-break: break-all;"></strong>
+              <div id="vCompFileInfo" style="font-size: 11px; color: var(--md-sys-color-on-surface-variant);"></div>
+            </div>
+            <button class="ui-btn ui-btn-outlined" style="padding: 4px 10px; font-size: 11px; height: auto;" onclick="resetVComp()">Cambiar video</button>
+          </div>
+
+          <div style="margin-bottom: 14px;">
+            <label style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 6px;">Preset de compresión:</label>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px;">
+              <label class="ui-radio-card" style="padding: 10px 12px; border-radius: 8px; border: 1px solid var(--md-sys-color-outline-variant); display: flex; flex-direction: column; gap: 4px; cursor: pointer; font-size: 12px;">
+                <div style="display: flex; align-items: center; gap: 6px; font-weight: 600;">
+                  <input type="radio" name="vCompPreset" value="medium" checked> ⭐ Medio (Recomendado)
+                </div>
+                <span style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); line-height: 1.3;">
+                  Ahorro de ~40% a 70% con resolución máx. 720p y excelente calidad.
+                </span>
+              </label>
+              <label class="ui-radio-card" style="padding: 10px 12px; border-radius: 8px; border: 1px solid var(--md-sys-color-outline-variant); display: flex; flex-direction: column; gap: 4px; cursor: pointer; font-size: 12px;">
+                <div style="display: flex; align-items: center; gap: 6px; font-weight: 600;">
+                  <input type="radio" name="vCompPreset" value="light"> 🪶 Ligero (Calidad visual)
+                </div>
+                <span style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); line-height: 1.3;">
+                  Ahorro de ~20% a 40% conservando resolución original y alta nitidez.
+                </span>
+              </label>
+              <label class="ui-radio-card" style="padding: 10px 12px; border-radius: 8px; border: 1px solid var(--md-sys-color-outline-variant); display: flex; flex-direction: column; gap: 4px; cursor: pointer; font-size: 12px;">
+                <div style="display: flex; align-items: center; gap: 6px; font-weight: 600;">
+                  <input type="radio" name="vCompPreset" value="whatsapp"> 📱 WhatsApp / Móvil
+                </div>
+                <span style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); line-height: 1.3;">
+                  Máxima compresión (480p) para enviar bajo límites de mensajería (16 MB).
+                </span>
+              </label>
+            </div>
+          </div>
+
+          <div id="vCompResultCard" style="display: none; background: #e6f4ea; color: #137333; border: 1px solid #ceead6; border-radius: 10px; padding: 12px 14px; margin-bottom: 14px; font-size: 12px;">
+            <div style="font-weight: 600; margin-bottom: 4px;">✓ ¡Video comprimido exitosamente!</div>
+            <div id="vCompResultStats" style="line-height: 1.4;"></div>
+          </div>
+
+          <div id="vCompProgressWrap" style="display: none; margin-top: 14px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; margin-bottom: 6px;">
+              <span id="vCompStatusText">Comprimiendo video con H.264...</span>
+              <span id="vCompPercent" style="font-weight: 600;">0%</span>
+            </div>
+            <div style="background: var(--md-sys-color-surface-variant); border-radius: 8px; height: 8px; overflow: hidden;">
+              <div id="vCompBarFill" style="background: var(--md-sys-color-primary); height: 100%; width: 0%; transition: width 0.15s ease;"></div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      footer.innerHTML = `
+        <button class="ui-btn ui-btn-outlined" id="btnCancelVComp" onclick="closeToolModal()">Cancelar</button>
+        <button class="ui-btn ui-btn-primary" id="btnExecVComp" disabled onclick="executeVComp()">Comprimir Video</button>
+      `;
+
+      const fileInput = document.getElementById("vCompInput");
+      const dropzone = document.getElementById("vCompDropzone");
+      const workArea = document.getElementById("vCompWorkArea");
+      const player = document.getElementById("vCompPlayer");
+      const btnExec = document.getElementById("btnExecVComp");
+
+      let loadedVCompFile = null;
+      let vCompObjectUrl = null;
+      let isVCompCancelled = false;
+
+      window.resetVComp = function() {
+        loadedVCompFile = null;
+        if (vCompObjectUrl) URL.revokeObjectURL(vCompObjectUrl);
+        vCompObjectUrl = null;
+        player.removeAttribute("src");
+        player.load();
+        fileInput.value = "";
+        workArea.style.display = "none";
+        dropzone.style.display = "block";
+        btnExec.setAttribute("disabled", "true");
+        document.getElementById("vCompProgressWrap").style.display = "none";
+        document.getElementById("vCompResultCard").style.display = "none";
+      };
+
+      function handleVCompFile(file) {
+        if (!file) return;
+        if (file.size > 500 * 1024 * 1024) {
+          showToast("El archivo supera el límite de 500 MB para procesamiento en el navegador.");
+          return;
+        }
+        if (vCompObjectUrl) URL.revokeObjectURL(vCompObjectUrl);
+        vCompObjectUrl = URL.createObjectURL(file);
+        registerModalObjectUrl(vCompObjectUrl);
+        player.src = vCompObjectUrl;
+        loadedVCompFile = file;
+
+        document.getElementById("vCompFileName").textContent = file.name;
+        document.getElementById("vCompFileInfo").innerText = `Tamaño original: ${formatFileSize(file.size)}`;
+        document.getElementById("vCompResultCard").style.display = "none";
+        dropzone.style.display = "none";
+        workArea.style.display = "block";
+        btnExec.removeAttribute("disabled");
+        showToast("Video cargado en vista previa");
+      }
+
+      fileInput.addEventListener("change", (e) => handleVCompFile(e.target.files[0]));
+      dropzone.addEventListener("dragover", (e) => { e.preventDefault(); dropzone.classList.add("dragover"); });
+      dropzone.addEventListener("dragleave", () => dropzone.classList.remove("dragover"));
+      dropzone.addEventListener("drop", (e) => {
+        e.preventDefault();
+        dropzone.classList.remove("dragover");
+        if (e.dataTransfer.files.length) handleVCompFile(e.dataTransfer.files[0]);
+      });
+
+      window.executeVComp = async function() {
+        if (!loadedVCompFile) return;
+
+        const presetRadio = document.querySelector('input[name="vCompPreset"]:checked');
+        const preset = presetRadio ? presetRadio.value : "medium";
+
+        const progressWrap = document.getElementById("vCompProgressWrap");
+        const barFill = document.getElementById("vCompBarFill");
+        const percentText = document.getElementById("vCompPercent");
+        const statusText = document.getElementById("vCompStatusText");
+        const btnCancel = document.getElementById("btnCancelVComp");
+        const resultCard = document.getElementById("vCompResultCard");
+        const resultStats = document.getElementById("vCompResultStats");
+
+        isVCompCancelled = false;
+        resultCard.style.display = "none";
+        progressWrap.style.display = "block";
+        btnExec.setAttribute("disabled", "true");
+        btnCancel.innerText = "Detener";
+        btnCancel.onclick = () => {
+          isVCompCancelled = true;
+          statusText.innerText = "Cancelando...";
+          if (window.cancelMediaProcess) window.cancelMediaProcess();
+        };
+
+        barFill.style.width = "10%";
+        percentText.innerText = "10%";
+        statusText.innerText = "Cargando motor multimedia FFmpeg WASM...";
+
+        let ffmpeg = null;
+        const inExt = (loadedVCompFile.name.match(/\.[^/.]+$/) || [".mp4"])[0].toLowerCase();
+        const inName = "input_vcomp" + inExt;
+        const outName = "output_vcomp.mp4";
+
+        const progressHandler = ({ progress }) => {
+          if (progress > 0 && progress <= 1) {
+            const pct = Math.min(99, Math.round(progress * 100));
+            barFill.style.width = pct + "%";
+            percentText.innerText = pct + "%";
+          }
+        };
+
+        try {
+          ffmpeg = await ensureFFmpegReady();
+          if (isVCompCancelled) throw new Error("CANCELLED");
+
+          ffmpeg.on("progress", progressHandler);
+
+          barFill.style.width = "25%";
+          percentText.innerText = "25%";
+          statusText.innerText = "Cargando video en memoria...";
+
+          const fileBytes = await loadedVCompFile.arrayBuffer();
+          await ffmpeg.writeFile(inName, new Uint8Array(fileBytes));
+
+          if (isVCompCancelled) throw new Error("CANCELLED");
+
+          barFill.style.width = "40%";
+          percentText.innerText = "40%";
+          statusText.innerText = "Comprimiendo video con H.264 + AAC...";
+
+          let args = ["-i", inName];
+          if (preset === "light") {
+            args.push("-c:v", "libx264", "-crf", "23", "-preset", "faster", "-c:a", "aac", "-b:a", "128k");
+          } else if (preset === "whatsapp") {
+            args.push("-c:v", "libx264", "-crf", "32", "-preset", "veryfast", "-vf", "scale='min(854,iw)':-2", "-c:a", "aac", "-b:a", "64k");
+          } else {
+            // medium
+            args.push("-c:v", "libx264", "-crf", "28", "-preset", "fast", "-vf", "scale='min(1280,iw)':-2", "-c:a", "aac", "-b:a", "96k");
+          }
+          args.push(outName);
+
+          await ffmpeg.exec(args);
+
+          if (isVCompCancelled) throw new Error("CANCELLED");
+
+          barFill.style.width = "95%";
+          percentText.innerText = "95%";
+          statusText.innerText = "Descargando video comprimido...";
+
+          const outData = await ffmpeg.readFile(outName);
+          const outBlob = new Blob([outData.buffer], { type: "video/mp4" });
+
+          const origSize = loadedVCompFile.size;
+          const newSize = outBlob.size;
+          const savedPct = Math.max(0, ((origSize - newSize) / origSize * 100)).toFixed(1);
+
+          resultStats.innerHTML = `Original: <strong>${formatFileSize(origSize)}</strong> → Comprimido: <strong>${formatFileSize(newSize)}</strong> (${savedPct}% de ahorro)`;
+          resultCard.style.display = "block";
+
+          const baseName = loadedVCompFile.name.replace(/\.[^/.]+$/, "");
+          const blobUrl = URL.createObjectURL(outBlob);
+          const a = document.createElement("a");
+          a.download = `${baseName}-comprimido.mp4`;
+          a.href = blobUrl;
+          a.click();
+          setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+
+          barFill.style.width = "100%";
+          percentText.innerText = "100%";
+          statusText.innerText = `¡Compresión finalizada! (${savedPct}% reducido)`;
+          showToast(`✓ ¡Video comprimido (${savedPct}% reducido) y descargado!`);
+          setTimeout(() => closeToolModal(), 1000);
+        } catch (err) {
+          if (isVCompCancelled || (err && (err.message === "CANCELLED" || (err.message && err.message.includes("terminate"))))) {
+            showToast("Compresión cancelada");
+          } else {
+            console.error("Error en video-compress:", err);
+            const msg = err && err.message ? err.message.toLowerCase() : "";
+            if (msg.includes("oom") || msg.includes("memory") || msg.includes("abort") || err instanceof RangeError) {
+              showToast("Memoria insuficiente del navegador para este video. Prueba con un preset más ligero o un video más corto.");
+            } else {
+              showToast("Error al comprimir video: " + (err.message || "error en FFmpeg"));
+            }
+          }
+        } finally {
+          if (ffmpeg && ffmpeg.loaded) {
+            try { ffmpeg.off("progress", progressHandler); } catch (e) {}
+            try { await ffmpeg.deleteFile(inName); } catch (e) {}
+            try { await ffmpeg.deleteFile(outName); } catch (e) {}
+          }
+          btnExec.removeAttribute("disabled");
+          btnCancel.innerText = "Cerrar";
+          btnCancel.onclick = () => closeToolModal();
+        }
+      };
       break;
     }
 
