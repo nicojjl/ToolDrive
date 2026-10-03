@@ -716,7 +716,7 @@ function renderFolders() {
 
   // Add "+ Nueva carpeta" card
   html += `
-    <div class="folder-card folder-card-add" onclick="openNewFolderModal()" title="Crear nueva carpeta personalizada">
+    <div class="folder-card folder-card-add" tabindex="0" role="button" aria-label="Crear nueva carpeta personalizada" onclick="openNewFolderModal()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openNewFolderModal();}" title="Crear nueva carpeta personalizada">
       <div class="folder-icon" style="color: var(--md-sys-color-primary)">
         <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
           <path d="M20 6h-8l-2-2H4c-1.11 0-1.99.89-1.99 2L2 18c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V8c0-1.11-.89-2-2-2zm-1 8h-3v3h-2v-3h-3v-2h3V9h2v3h3v2z"/>
@@ -835,7 +835,7 @@ function renderTools() {
               <th style="width: 320px;">Nombre</th>
               <th>Motivo por el que se te sugiere</th>
               <th>Ubicación</th>
-              <th style="text-align: right; padding-right: 20px; width: 80px;"></th>
+              <th style="text-align: right; padding-right: 20px; width: 80px;"><span class="sr-only">Acciones</span></th>
             </tr>
           </thead>
           <tbody>
@@ -845,7 +845,7 @@ function renderTools() {
       const isStarred = favorites.includes(tool.id);
       const isInFolder = customFolders.some(f => f.tools.includes(tool.id));
       tableHtml += `
-        <tr class="tool-row" onclick="openToolModal('${tool.id}')">
+        <tr class="tool-row" tabindex="0" role="button" aria-label="Abrir herramienta: ${escapeHtml(tool.title)}" onclick="openToolModal('${tool.id}')" onkeydown="handleToolCardKeydown('${tool.id}', event)">
           <td>
             <div class="tool-name-cell">
               <span class="tool-file-icon">${getFileIcon(tool.iconType)}</span>
@@ -862,12 +862,12 @@ function renderTools() {
             </div>
           </td>
           <td class="tool-actions-cell" onclick="event.stopPropagation()">
-            <button class="folder-assign-btn ${isInFolder ? 'has-folders' : ''}" onclick="openAssignToolModal('${tool.id}', event)" title="Organizar en carpetas">
+            <button class="folder-assign-btn ${isInFolder ? 'has-folders' : ''}" onclick="openAssignToolModal('${tool.id}', event)" onkeydown="event.stopPropagation()" title="Organizar en carpetas" aria-label="Organizar ${escapeHtml(tool.title)} en carpetas">
               <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
                 <path d="M20 6h-8l-2-2H4c-1.11 0-1.99.89-1.99 2L2 18c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V8c0-1.11-.89-2-2-2zm-1 8h-3v3h-2v-3h-3v-2h3V9h2v3h3v2z"/>
               </svg>
             </button>
-            <button class="star-btn ${isStarred ? 'starred' : ''}" onclick="toggleFavorite('${tool.id}', event)" title="Destacar">
+            <button class="star-btn ${isStarred ? 'starred' : ''}" onclick="toggleFavorite('${tool.id}', event)" onkeydown="event.stopPropagation()" title="${isStarred ? 'Quitar de destacados' : 'Destacar'}" aria-label="${isStarred ? 'Quitar de destacados' : 'Destacar'}: ${escapeHtml(tool.title)}">
               ${isStarred ? ICONS.starFilled : ICONS.star}
             </button>
           </td>
@@ -888,7 +888,7 @@ function renderTools() {
       const isStarred = favorites.includes(tool.id);
       const isInFolder = customFolders.some(f => f.tools.includes(tool.id));
       gridHtml += `
-        <div class="tool-card" onclick="openToolModal('${tool.id}')">
+        <div class="tool-card" tabindex="0" role="button" aria-label="Abrir herramienta: ${escapeHtml(tool.title)}" onclick="openToolModal('${tool.id}')" onkeydown="handleToolCardKeydown('${tool.id}', event)">
           <div class="tool-card-top">
             <div class="tool-card-icon-wrap">
               ${getFileIcon(tool.iconType)}
@@ -900,12 +900,12 @@ function renderTools() {
           <div class="tool-card-footer" onclick="event.stopPropagation()">
             <span style="font-size: 11px; color: #747775;">${tool.categoryName}</span>
             <div style="display: flex; align-items: center; gap: 4px;">
-              <button class="folder-assign-btn ${isInFolder ? 'has-folders' : ''}" onclick="openAssignToolModal('${tool.id}', event)" title="Organizar en carpetas">
+              <button class="folder-assign-btn ${isInFolder ? 'has-folders' : ''}" onclick="openAssignToolModal('${tool.id}', event)" onkeydown="event.stopPropagation()" title="Organizar en carpetas" aria-label="Organizar ${escapeHtml(tool.title)} en carpetas">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
                   <path d="M20 6h-8l-2-2H4c-1.11 0-1.99.89-1.99 2L2 18c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V8c0-1.11-.89-2-2-2zm-1 8h-3v3h-2v-3h-3v-2h3V9h2v3h3v2z"/>
                 </svg>
               </button>
-              <button class="star-btn ${isStarred ? 'starred' : ''}" onclick="toggleFavorite('${tool.id}', event)">
+              <button class="star-btn ${isStarred ? 'starred' : ''}" onclick="toggleFavorite('${tool.id}', event)" onkeydown="event.stopPropagation()" title="${isStarred ? 'Quitar de destacados' : 'Destacar'}" aria-label="${isStarred ? 'Quitar de destacados' : 'Destacar'}: ${escapeHtml(tool.title)}">
                 ${isStarred ? ICONS.starFilled : ICONS.star}
               </button>
             </div>
@@ -1045,17 +1045,21 @@ function initTheme() {
   } catch (e) {}
   const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
 
-  if (savedTheme === "dark" || (!savedTheme && prefersDark)) {
+  const isDark = savedTheme === "dark" || (!savedTheme && prefersDark);
+  if (isDark) {
     document.body.classList.add("dark-theme");
   } else {
     document.body.classList.remove("dark-theme");
   }
 
+  const themeBtn = document.getElementById("themeToggleBtn");
+  if (themeBtn) {
+    themeBtn.setAttribute("aria-label", isDark ? "Cambiar a modo claro" : "Cambiar a modo oscuro");
+  }
+
   // Global Keyboard Shortcuts
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") {
-      closeToolModal();
-    } else if (e.key === "/" && document.activeElement.tagName !== "INPUT" && document.activeElement.tagName !== "TEXTAREA") {
+    if (e.key === "/" && document.activeElement.tagName !== "INPUT" && document.activeElement.tagName !== "TEXTAREA") {
       e.preventDefault();
       const search = document.getElementById("searchInput");
       if (search) search.focus();
@@ -1066,9 +1070,24 @@ function initTheme() {
 window.toggleTheme = function() {
   const isDark = document.body.classList.toggle("dark-theme");
   safeSetStorage("tooldrive_theme", isDark ? "dark" : "light");
+  const themeBtn = document.getElementById("themeToggleBtn");
+  if (themeBtn) {
+    themeBtn.setAttribute("aria-label", isDark ? "Cambiar a modo claro" : "Cambiar a modo oscuro");
+  }
   showToast(isDark ? "Modo oscuro activado" : "Modo claro activado");
 };
 
+// ==================== KEYBOARD NAVIGATION FOR TOOL CARDS ====================
+window.handleToolCardKeydown = function(toolId, event) {
+  if (event.key === "Enter" || event.key === " ") {
+    // If the event originated on an inner interactive control, ignore it
+    if (event.target.tagName === "BUTTON" || event.target.tagName === "INPUT" || event.target.tagName === "A") {
+      return;
+    }
+    event.preventDefault();
+    openToolModal(toolId);
+  }
+};
 
 // ==================== OBJECT URL REGISTRY & CLEANUP ====================
 let activeModalObjectUrls = [];
@@ -1090,11 +1109,14 @@ function revokeAllModalObjectUrls() {
 }
 
 // ==================== INTERACTIVE TOOLS WORKSPACE ====================
+let lastFocusedToolTrigger = null;
+
 window.openToolModal = function(toolId) {
   const tool = TOOLS.find(t => t.id === toolId);
   if (!tool) return;
 
   markAsRecent(tool.id);
+  lastFocusedToolTrigger = document.activeElement;
 
   const backdrop = document.getElementById("toolModalBackdrop");
   const modalIcon = document.getElementById("modalToolIcon");
@@ -1111,6 +1133,16 @@ window.openToolModal = function(toolId) {
   buildToolWorkspace(tool, modalBody, modalFooter);
 
   backdrop.classList.add("open");
+
+  // Move initial focus into modal for keyboard & screen reader accessibility
+  setTimeout(() => {
+    const modal = backdrop.querySelector(".tool-modal");
+    if (!modal) return;
+    const focusable = modal.querySelector('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])');
+    if (focusable) {
+      focusable.focus();
+    }
+  }, 60);
 
   // Prevent default browser navigation when dropping files anywhere on modal or backdrop
   if (!backdrop._dragPreventAttached) {
@@ -1133,7 +1165,54 @@ window.closeToolModal = function() {
   }
   // Clean any active object URLs created inside tool modals
   revokeAllModalObjectUrls();
+
+  // Return focus to the trigger element that opened the modal
+  if (lastFocusedToolTrigger && typeof lastFocusedToolTrigger.focus === "function") {
+    try { lastFocusedToolTrigger.focus(); } catch (e) {}
+    lastFocusedToolTrigger = null;
+  }
 };
+
+// ==================== MODAL FOCUS TRAP & ESCAPE KEY ====================
+document.addEventListener("keydown", (e) => {
+  const backdrop = document.getElementById("toolModalBackdrop");
+  if (!backdrop || !backdrop.classList.contains("open")) return;
+
+  if (e.key === "Escape") {
+    e.preventDefault();
+    closeToolModal();
+    return;
+  }
+
+  if (e.key === "Tab") {
+    const modal = backdrop.querySelector(".tool-modal");
+    if (!modal) return;
+
+    const focusables = Array.from(modal.querySelectorAll(
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    )).filter(el => el.offsetParent !== null && window.getComputedStyle(el).visibility !== "hidden");
+
+    if (focusables.length === 0) {
+      e.preventDefault();
+      return;
+    }
+
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+
+    if (e.shiftKey) {
+      if (document.activeElement === first || !modal.contains(document.activeElement)) {
+        e.preventDefault();
+        last.focus();
+      }
+    } else {
+      if (document.activeElement === last || !modal.contains(document.activeElement)) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+  }
+});
 
 // ==================== STATIC MODAL BACKDROP HANDLER ====================
 window.handleStaticBackdropClick = function(event) {
@@ -2564,9 +2643,9 @@ function buildToolWorkspace(tool, container, footer) {
             <label class="ui-control-label">1. Dibuja tu firma digital con ratón o pantalla táctil:</label>
             <div style="display: flex; gap: 10px; margin-bottom: 8px; align-items: center;">
               <span style="font-size: 13px;">Color:</span>
-              <button class="icon-btn" style="background: #000; width: 24px; height: 24px; border-radius: 50%;" onclick="setPenColor('#000000')" title="Negro"></button>
-              <button class="icon-btn" style="background: #0b57d0; width: 24px; height: 24px; border-radius: 50%;" onclick="setPenColor('#0b57d0')" title="Azul"></button>
-              <button class="icon-btn" style="background: #ea4335; width: 24px; height: 24px; border-radius: 50%;" onclick="setPenColor('#ea4335')" title="Rojo"></button>
+              <button class="icon-btn" style="background: #000; width: 24px; height: 24px; border-radius: 50%;" onclick="setPenColor('#000000')" title="Negro" aria-label="Color de trazo negro"></button>
+              <button class="icon-btn" style="background: #0b57d0; width: 24px; height: 24px; border-radius: 50%;" onclick="setPenColor('#0b57d0')" title="Azul" aria-label="Color de trazo azul"></button>
+              <button class="icon-btn" style="background: #ea4335; width: 24px; height: 24px; border-radius: 50%;" onclick="setPenColor('#ea4335')" title="Rojo" aria-label="Color de trazo rojo"></button>
               <button class="ui-btn ui-btn-outlined" style="margin-left: auto; height: 30px; font-size: 12px; padding: 4px 10px;" onclick="clearSignature()">Borrar trazo</button>
             </div>
             <div style="border: 1px dashed var(--md-sys-color-outline-variant); border-radius: 12px; background: var(--md-sys-color-surface); padding: 4px;">

@@ -685,6 +685,12 @@ body.dark-theme .folder-more:focus-visible {
   background-color: var(--md-sys-color-surface-variant);
 }
 
+.tool-row:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: -2px;
+  background-color: var(--md-sys-color-surface-variant);
+}
+
 .tool-name-cell {
   display: flex;
   align-items: center;
@@ -808,6 +814,13 @@ body.dark-theme .folder-more:focus-visible {
   box-shadow: 0 4px 12px rgba(0,0,0,0.08);
   border-color: #c2e7ff;
   transform: translateY(-2px);
+}
+
+.tool-card:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
+  background-color: #ffffff;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
 }
 
 .tool-card-top {
@@ -1682,5 +1695,18 @@ body.dark-theme .context-menu-item:hover,
 body.dark-theme .context-menu-item:focus,
 body.dark-theme .context-menu-item:focus-visible {
   background-color: #333538;
+}
+
+/* ==================== ACCESSIBILITY UTILITIES ==================== */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
 }
 
