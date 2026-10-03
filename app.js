@@ -127,12 +127,11 @@ const TOOLS = [
     category: "image",
     categoryName: "Imágenes",
     title: "Remove Background (Eliminar fondo)",
-    desc: "Quita el fondo de una foto automáticamente usando detección inteligente en tu navegador.",
+    desc: "Elimina el fondo de fotos mediante segmentación U²-Net local (sin enviar a la nube). Funciona mejor con sujetos claros.",
     reason: "Aislamiento de producto y retratos",
     location: "Imágenes",
-    formats: ".png, .jpg",
-    iconType: "image",
-    disabled: true
+    formats: ".png, .jpg, .webp",
+    iconType: "image"
   },
   {
     id: "image-compress",
@@ -540,6 +539,51 @@ window.cancelMediaProcess = function() {
     } catch (e) {}
     ffmpegInstance = null;
   }
+};
+
+let onnxSessionInstance = null;
+let onnxLoadPromise = null;
+let isRemoveBgCancelled = false;
+
+async function ensureOnnxReady(onProgress) {
+  if (onnxSessionInstance) {
+    return onnxSessionInstance;
+  }
+  if (onnxLoadPromise) {
+    return await onnxLoadPromise;
+  }
+
+  onnxLoadPromise = (async () => {
+    if (typeof window.ort === "undefined") {
+      if (onProgress) onProgress(15, "Cargando motor ONNX Runtime...");
+      await loadScriptAsync("libs/onnx/ort.wasm.min.js");
+    }
+
+    if (onProgress) onProgress(35, "Configurando WebAssembly monohilo...");
+    window.ort.env.wasm.wasmPaths = new URL("libs/onnx/", window.location.href).href;
+    window.ort.env.wasm.numThreads = 1;
+    window.ort.env.wasm.proxy = false;
+
+    if (onProgress) onProgress(55, "Cargando modelo de segmentación U²-Net (4.5 MB)...");
+    const modelUrl = new URL("libs/onnx/u2netp.onnx", window.location.href).href;
+    const session = await window.ort.InferenceSession.create(modelUrl, {
+      executionProviders: ["wasm"]
+    });
+
+    onnxSessionInstance = session;
+    return session;
+  })();
+
+  try {
+    return await onnxLoadPromise;
+  } catch (err) {
+    onnxLoadPromise = null;
+    throw err;
+  }
+}
+
+window.cancelRemoveBg = function() {
+  isRemoveBgCancelled = true;
 };
 
 function parsePdfRanges(rangeStr, maxPages) {
@@ -1389,6 +1433,7 @@ window.closeToolModal = function() {
   if (typeof window.cancelUnlockPdf === "function") try { window.cancelUnlockPdf(); } catch (e) {}
   if (typeof window.cancelDocToPdf === "function") try { window.cancelDocToPdf(); } catch (e) {}
   if (typeof window.cancelMediaProcess === "function") try { window.cancelMediaProcess(); } catch (e) {}
+  if (typeof window.cancelRemoveBg === "function") try { window.cancelRemoveBg(); } catch (e) {}
   // Clean any active object URLs created inside tool modals
   revokeAllModalObjectUrls();
 
@@ -5481,24 +5526,347 @@ function buildToolWorkspace(tool, container, footer) {
       break;
     }
 
-    // ---------------- HERRAMIENTAS EN DESARROLLO (IMÁGENES COMPLEJAS) ----------------
+    // ---------------- REMOVE BACKGROUND (ONNX RUNTIME + U2-NET-SMALL) ----------------
     case "remove-bg": {
       container.innerHTML = `
-        <div style="text-align: center; padding: 28px 16px; background: var(--md-sys-color-surface-variant); border-radius: 16px; border: 1px dashed var(--md-sys-color-outline-variant);">
-          <div style="font-size: 38px; margin-bottom: 10px;">🛠️</div>
-          <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 6px; color: var(--md-sys-color-on-surface);">Herramienta en Desarrollo</h3>
-          <p style="font-size: 13px; color: var(--md-sys-color-on-surface-variant); max-width: 480px; margin: 0 auto 16px; line-height: 1.5;">
-            La segmentación inteligente de sujetos y eliminación de fondo requiere un modelo de visión por computadora local (MediaPipe / TensorFlow.js ~40 MB) en preparación para no enviar tus fotos a servidores externos.
-          </p>
-          <div style="display: inline-flex; align-items: center; gap: 6px; background: #e8f0fe; color: #1a73e8; font-size: 12px; font-weight: 600; padding: 6px 14px; border-radius: 20px;">
-            <span>⏱️</span> Próximamente disponible en ToolDrive
+        <div class="ui-dropzone" id="rmbgDropzone" onclick="document.getElementById('rmbgInput').click()">
+          <input type="file" id="rmbgInput" style="display: none;" accept="image/png,image/jpeg,image/webp">
+          <div class="ui-dropzone-icon">${ICONS.image}</div>
+          <div class="ui-dropzone-title">Selecciona o arrastra una imagen</div>
+          <div class="ui-dropzone-sub">Formatos PNG, JPG o WebP (límite máx. 25 MB)</div>
+        </div>
+
+        <div style="background: var(--md-sys-color-surface-variant); border-radius: 12px; padding: 12px 14px; margin-top: 14px; border: 1px solid var(--md-sys-color-outline-variant); font-size: 12px; line-height: 1.5; color: var(--md-sys-color-on-surface-variant);">
+          <div style="margin-bottom: 6px; display: flex; align-items: flex-start; gap: 8px;">
+            <span style="font-size: 14px;">💡</span>
+            <div><strong>Sujetos recomendados:</strong> Funciona mejor con personas, retratos, productos, mascotas u objetos con contornos y contraste claros respecto al fondo.</div>
+          </div>
+          <div style="display: flex; align-items: flex-start; gap: 8px;">
+            <span style="font-size: 14px;">⏳</span>
+            <div><strong>Carga inicial:</strong> La primera vez que uses la herramienta se cargará el modelo local U²-Net (4.5 MB). Las siguientes ejecuciones procesarán al instante desde la memoria del navegador.</div>
+          </div>
+        </div>
+
+        <div id="rmbgWorkArea" style="display: none; margin-top: 14px;">
+          <div style="background: var(--md-sys-color-surface-variant); border-radius: 12px; padding: 12px 16px; margin-bottom: 14px; border: 1px solid var(--md-sys-color-outline-variant); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 12px; min-width: 0;">
+              <img id="rmbgPreviewThumb" src="" alt="Vista previa" style="width: 48px; height: 48px; object-fit: cover; border-radius: 8px; border: 1px solid var(--md-sys-color-outline-variant);">
+              <div style="min-width: 0;">
+                <div id="rmbgFileName" style="font-weight: 600; font-size: 13px; color: var(--md-sys-color-on-surface); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px;"></div>
+                <div id="rmbgFileMeta" style="font-size: 11px; color: var(--md-sys-color-on-surface-variant); margin-top: 2px;"></div>
+              </div>
+            </div>
+            <button class="ui-btn ui-btn-tonal" id="rmbgBtnChange" style="font-size: 12px; padding: 6px 12px;">Cambiar foto</button>
+          </div>
+
+          <div id="rmbgActionsArea" style="margin-bottom: 14px; text-align: center;">
+            <button class="ui-btn ui-btn-primary" id="rmbgBtnRun" style="width: 100%; padding: 12px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; gap: 8px;">
+              <span>✨</span> Eliminar Fondo (Salida PNG Transparente)
+            </button>
+          </div>
+
+          <div id="rmbgProgressBox" style="display: none; background: var(--md-sys-color-surface-variant); border-radius: 12px; padding: 14px 16px; margin-bottom: 14px; border: 1px solid var(--md-sys-color-outline-variant);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 12px;">
+              <span id="rmbgStatusText" style="font-weight: 600; color: var(--md-sys-color-on-surface);">Iniciando proceso...</span>
+              <span id="rmbgPercentText" style="font-weight: 600; color: var(--md-sys-color-primary);">0%</span>
+            </div>
+            <div style="background: var(--md-sys-color-surface); height: 8px; border-radius: 4px; overflow: hidden; margin-bottom: 12px;">
+              <div id="rmbgBarFill" style="background: var(--md-sys-color-primary); height: 100%; width: 0%; transition: width 0.3s ease;"></div>
+            </div>
+            <div style="text-align: right;">
+              <button class="ui-btn ui-btn-tonal" id="rmbgBtnCancel" style="font-size: 11px; padding: 4px 12px;">Cancelar</button>
+            </div>
+          </div>
+
+          <div id="rmbgResultBox" style="display: none;">
+            <div style="font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--md-sys-color-on-surface); display: flex; justify-content: space-between; align-items: center;">
+              <span>Resultado con fondo transparente:</span>
+              <span id="rmbgTimeBadge" style="font-size: 11px; font-weight: 500; background: #e6f4ea; color: #137333; padding: 2px 8px; border-radius: 12px;"></span>
+            </div>
+            
+            <div class="bg-checkerboard" style="border-radius: 12px; overflow: hidden; padding: 16px; display: flex; align-items: center; justify-content: center; min-height: 220px; border: 1px solid var(--md-sys-color-outline-variant); margin-bottom: 14px;">
+              <img id="rmbgResultImg" src="" alt="Resultado sin fondo" style="max-width: 100%; max-height: 360px; object-fit: contain; filter: drop-shadow(0 4px 12px rgba(0,0,0,0.15));">
+            </div>
+
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+              <button class="ui-btn ui-btn-primary" id="rmbgBtnDownload" style="flex: 1; padding: 10px 16px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; gap: 8px;">
+                <span>⬇️</span> Descargar PNG Transparente
+              </button>
+              <button class="ui-btn ui-btn-tonal" id="rmbgBtnReset" style="padding: 10px 16px;">
+                Procesar otra
+              </button>
+            </div>
           </div>
         </div>
       `;
 
       footer.innerHTML = `
-        <button class="ui-btn ui-btn-primary" onclick="closeToolModal()">Entendido</button>
+        <button class="ui-btn ui-btn-tonal" onclick="closeToolModal()">Cerrar</button>
       `;
+
+      let currentFile = null;
+      let originalImageObj = null;
+      let resultBlob = null;
+      let resultObjectUrl = null;
+
+      const dropzone = document.getElementById("rmbgDropzone");
+      const fileInput = document.getElementById("rmbgInput");
+      const workArea = document.getElementById("rmbgWorkArea");
+      const fileNameEl = document.getElementById("rmbgFileName");
+      const fileMetaEl = document.getElementById("rmbgFileMeta");
+      const previewThumb = document.getElementById("rmbgPreviewThumb");
+      const btnChange = document.getElementById("rmbgBtnChange");
+      const btnRun = document.getElementById("rmbgBtnRun");
+      const actionsArea = document.getElementById("rmbgActionsArea");
+      const progressBox = document.getElementById("rmbgProgressBox");
+      const statusText = document.getElementById("rmbgStatusText");
+      const percentText = document.getElementById("rmbgPercentText");
+      const barFill = document.getElementById("rmbgBarFill");
+      const btnCancel = document.getElementById("rmbgBtnCancel");
+      const resultBox = document.getElementById("rmbgResultBox");
+      const resultImg = document.getElementById("rmbgResultImg");
+      const timeBadge = document.getElementById("rmbgTimeBadge");
+      const btnDownload = document.getElementById("rmbgBtnDownload");
+      const btnReset = document.getElementById("rmbgBtnReset");
+
+      const handleFile = (file) => {
+        if (!file) return;
+        if (!file.type.startsWith("image/")) {
+          alert("Por favor selecciona un archivo de imagen válido (PNG, JPG o WebP).");
+          return;
+        }
+        if (file.size > 25 * 1024 * 1024) {
+          alert("La imagen excede el límite máximo de 25 MB.");
+          return;
+        }
+
+        currentFile = file;
+        resultBlob = null;
+        resultBox.style.display = "none";
+        actionsArea.style.display = "block";
+        progressBox.style.display = "none";
+
+        const tempUrl = registerModalObjectUrl(URL.createObjectURL(file));
+        const img = new Image();
+        img.onload = () => {
+          originalImageObj = img;
+          fileNameEl.innerText = file.name;
+          fileMetaEl.innerText = `${img.naturalWidth} × ${img.naturalHeight} px • ${(file.size / (1024 * 1024)).toFixed(2)} MB • ${file.type.split("/")[1].toUpperCase()}`;
+          previewThumb.src = tempUrl;
+          dropzone.style.display = "none";
+          workArea.style.display = "block";
+        };
+        img.onerror = () => {
+          alert("No se pudo cargar la imagen seleccionada. Comprueba que el archivo no esté dañado.");
+        };
+        img.src = tempUrl;
+      };
+
+      fileInput.onchange = (e) => {
+        if (e.target.files && e.target.files[0]) {
+          handleFile(e.target.files[0]);
+        }
+      };
+
+      dropzone.ondragover = (e) => {
+        e.preventDefault();
+        dropzone.classList.add("dragover");
+      };
+      dropzone.ondragleave = () => {
+        dropzone.classList.remove("dragover");
+      };
+      dropzone.ondrop = (e) => {
+        e.preventDefault();
+        dropzone.classList.remove("dragover");
+        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+          handleFile(e.dataTransfer.files[0]);
+        }
+      };
+
+      btnChange.onclick = () => {
+        fileInput.value = "";
+        dropzone.style.display = "block";
+        workArea.style.display = "none";
+        resultBox.style.display = "none";
+      };
+
+      btnReset.onclick = () => {
+        btnChange.click();
+      };
+
+      btnRun.onclick = async () => {
+        if (!currentFile || !originalImageObj) return;
+
+        isRemoveBgCancelled = false;
+        actionsArea.style.display = "none";
+        progressBox.style.display = "block";
+        resultBox.style.display = "none";
+        barFill.style.width = "10%";
+        percentText.innerText = "10%";
+        statusText.innerText = "Iniciando motor de IA...";
+
+        btnCancel.onclick = () => {
+          isRemoveBgCancelled = true;
+          statusText.innerText = "Cancelando...";
+        };
+
+        const startTime = performance.now();
+
+        try {
+          // 1. Cargar ORT y modelo U2-Net
+          const session = await ensureOnnxReady((pct, msg) => {
+            barFill.style.width = pct + "%";
+            percentText.innerText = pct + "%";
+            statusText.innerText = msg;
+          });
+
+          if (isRemoveBgCancelled) throw new Error("CANCELLED");
+
+          // 2. Preprocesar imagen a 320x320 con normalización ImageNet
+          barFill.style.width = "65%";
+          percentText.innerText = "65%";
+          statusText.innerText = "Redimensionando y preparando tensores (320×320)...";
+
+          const origW = originalImageObj.naturalWidth;
+          const origH = originalImageObj.naturalHeight;
+
+          const prepCanvas = document.createElement("canvas");
+          prepCanvas.width = 320;
+          prepCanvas.height = 320;
+          const pCtx = prepCanvas.getContext("2d");
+          pCtx.drawImage(originalImageObj, 0, 0, 320, 320);
+          const rawData = pCtx.getImageData(0, 0, 320, 320).data;
+
+          const mean = [0.485, 0.456, 0.406];
+          const std = [0.229, 0.224, 0.225];
+          const inputTensorData = new Float32Array(1 * 3 * 320 * 320);
+
+          for (let i = 0; i < 320 * 320; i++) {
+            const r = rawData[i * 4] / 255.0;
+            const g = rawData[i * 4 + 1] / 255.0;
+            const b = rawData[i * 4 + 2] / 255.0;
+            inputTensorData[0 * 320 * 320 + i] = (r - mean[0]) / std[0];
+            inputTensorData[1 * 320 * 320 + i] = (g - mean[1]) / std[1];
+            inputTensorData[2 * 320 * 320 + i] = (b - mean[2]) / std[2];
+          }
+
+          if (isRemoveBgCancelled) throw new Error("CANCELLED");
+
+          // 3. Ejecutar inferencia
+          barFill.style.width = "75%";
+          percentText.innerText = "75%";
+          statusText.innerText = "Segmentando sujeto con red neuronal U²-Net...";
+
+          const tensor = new window.ort.Tensor("float32", inputTensorData, [1, 3, 320, 320]);
+          const feeds = {};
+          feeds[session.inputNames[0]] = tensor;
+
+          const results = await session.run(feeds);
+
+          if (isRemoveBgCancelled) throw new Error("CANCELLED");
+
+          // 4. Procesar máscara y aplicar suavizado de bordes
+          barFill.style.width = "88%";
+          percentText.innerText = "88%";
+          statusText.innerText = "Suavizando bordes y reescalando a dimensiones originales...";
+
+          const outData = results[session.outputNames[0]].data;
+
+          let minVal = Infinity, maxVal = -Infinity;
+          for (let i = 0; i < outData.length; i++) {
+            const v = outData[i];
+            if (v < minVal) minVal = v;
+            if (v > maxVal) maxVal = v;
+          }
+          const range = (maxVal - minVal) || 1;
+
+          // Crear lienzo de máscara 320x320 con curva suave
+          const maskCanvas = document.createElement("canvas");
+          maskCanvas.width = 320;
+          maskCanvas.height = 320;
+          const mCtx = maskCanvas.getContext("2d");
+          const maskImgData = mCtx.createImageData(320, 320);
+
+          for (let i = 0; i < 320 * 320; i++) {
+            let val = (outData[i] - minVal) / range;
+            if (val < 0.1) {
+              val = 0;
+            } else if (val > 0.9) {
+              val = 1;
+            } else {
+              const t = (val - 0.1) / 0.8;
+              val = t * t * (3 - 2 * t);
+            }
+            maskImgData.data[i * 4] = 255;
+            maskImgData.data[i * 4 + 1] = 255;
+            maskImgData.data[i * 4 + 2] = 255;
+            maskImgData.data[i * 4 + 3] = Math.round(val * 255);
+          }
+          mCtx.putImageData(maskImgData, 0, 0);
+
+          // Escalar máscara a la resolución original con suavizado de bordes
+          const scaledMaskCanvas = document.createElement("canvas");
+          scaledMaskCanvas.width = origW;
+          scaledMaskCanvas.height = origH;
+          const smCtx = scaledMaskCanvas.getContext("2d");
+          smCtx.imageSmoothingEnabled = true;
+          smCtx.imageSmoothingQuality = "high";
+          smCtx.drawImage(maskCanvas, 0, 0, origW, origH);
+
+          // Componer con la imagen original
+          const finalCanvas = document.createElement("canvas");
+          finalCanvas.width = origW;
+          finalCanvas.height = origH;
+          const fCtx = finalCanvas.getContext("2d");
+          fCtx.drawImage(originalImageObj, 0, 0);
+          fCtx.globalCompositeOperation = "destination-in";
+          fCtx.drawImage(scaledMaskCanvas, 0, 0);
+
+          barFill.style.width = "96%";
+          percentText.innerText = "96%";
+          statusText.innerText = "Generando archivo PNG transparente...";
+
+          resultBlob = await new Promise(resolve => finalCanvas.toBlob(resolve, "image/png"));
+          if (!resultBlob) throw new Error("No se pudo generar el PNG resultante.");
+
+          const totalDuration = ((performance.now() - startTime) / 1000).toFixed(1);
+
+          barFill.style.width = "100%";
+          percentText.innerText = "100%";
+          statusText.innerText = "¡Completado!";
+
+          resultObjectUrl = registerModalObjectUrl(URL.createObjectURL(resultBlob));
+          resultImg.src = resultObjectUrl;
+          timeBadge.innerText = `⚡ ${totalDuration}s`;
+
+          progressBox.style.display = "none";
+          resultBox.style.display = "block";
+        } catch (err) {
+          progressBox.style.display = "none";
+          actionsArea.style.display = "block";
+          if (err && err.message === "CANCELLED") {
+            alert("Operación cancelada por el usuario.");
+          } else {
+            console.error("Error en remove-bg:", err);
+            alert("Error al procesar la imagen: " + (err.message || err));
+          }
+        }
+      };
+
+      btnDownload.onclick = () => {
+        if (!resultBlob || !currentFile) return;
+        const baseName = currentFile.name.replace(/\.[^/.]+$/, "");
+        const downloadName = `${baseName}-sin-fondo.png`;
+        const downloadUrl = URL.createObjectURL(resultBlob);
+        const a = document.createElement("a");
+        a.href = downloadUrl;
+        a.download = downloadName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+      };
+
       break;
     }
 
